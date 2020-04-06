@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  mysqldb:
+    image: mysql:latest
+    ports:
+      - "3306:3306"
+    networks: 
+      - frontend-bridge
+    volumes:
+      - /home/gideon/mysql-storage/fight-covid19:/var/lib/mysql
+    environment:
+      MYSQL_HOST: localhost
+      MYSQL_USER: root
+      MYSQL_PASSWORD: hakty11
+      MYSQL_ROOT_PASSWORD: hakty11
+
+networks: 
+  frontend-bridge:
+    external: true
