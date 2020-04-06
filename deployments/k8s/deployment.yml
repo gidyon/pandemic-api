@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fightcovid19
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fightcovid19
+  template:
+    metadata:
+      labels:
+        app: fightcovid19
+    spec:
+      containers:
+      - name: fightcovid19
+        image: gidyon/fightcovid19-api:v0.1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 443
+          name: https
+          protocol: TCP
+        env:
+        - name: ROOT_DIR
+          value: /app/api/json
+        - name: PORT
+          value: "443"
+        - name: TLS_CERT_FILE
+          value: /app/secrets/keys/cert
+        - name: TLS_KEY_FILE
+          value: /app/secrets/keys/key
+        - name: MYSQL_HOST
+          value: mysql-np
+        - name: MYSQL_PORT
+          value: "80"
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+        - name: MYSQL_SCHEMA
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: schema
+        volumeMounts:
+          - name: app-tls
+            mountPath: /app/secrets/keys/
+            readOnly: true
+      volumes:
+      - name: app-tls
+        secret:
+          secretName: fightcovid19-tls
