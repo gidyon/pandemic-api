@@ -1,0 +1,16 @@
+{
+    "revision": 1,
+    "source": "redscross.org",
+    "source_organization": "Red Cross Team",
+    "general_hotlines": [
+        {"number": "07123781", "description": "Call free number"}
+    ],
+    "general_emails": [
+        {"email": "covid19response@gmail.com", "description": "Response team email address"}
+    ],
+    "counties_hotline": [
+        {"county": "Nairobi", "hotlines": ["0978vvvv"], "emails":["xyz@testing.na.com"]},
+        {"county": "Mombasa", "hotlines": ["0978mmmm"], "emails":["xyz@testing.mb.com"]},
+        {"county": "Kiambu", "hotlines": ["0978kkkk"], "emails":["xyz@testing.km.com"]}
+    ]
+}

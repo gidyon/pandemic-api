@@ -1,0 +1,13 @@
+{
+    "revision": 1,
+    "source": "COVID-19 Task Force",
+    "source_organization": "Ministry Of Health",
+    "symptoms": [
+        {"prevalence": "general", "symptom":"High body temperature"},
+        {"prevalence": "general", "symptom":"Coughing and sneezing"},
+        {"prevalence": "general", "symptom":"Sore throat"},
+        {"prevalence": "general", "symptom":"Headaches"},
+        {"prevalence": "common", "symptom":"Difficulty in breathing"},
+        {"prevalence": "common", "symptom":"Diarhea"}
+    ]
+}

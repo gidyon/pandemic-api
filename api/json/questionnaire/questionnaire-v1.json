@@ -1,0 +1,88 @@
+{
+    "revision": 1,
+    "source": "COVID-19 Task Force",
+    "source_organization": "Ministry Of Health",
+    "questionnaire": [
+        {
+            "key": "age",
+            "question": "Your age bracket",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "0 - 15 Years", "value": "groupA"},
+                {"text": "15 - 25 Years", "value": "groupB"},
+                {"text": "25 - 40 Years", "value": "groupC"},
+                {"text": "40 - 60 Years", "value": "groupD"},
+                {"text": "Above 60 Years", "value": "groupE"}
+            ],
+            "multi": false
+        },
+        {
+            "key": "age",
+            "question": "Have there been any case of COVID-19 in your area/county",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "More than 100 cases", "value": "groupA"},
+                {"text": "Less than 100", "value": "groupB"},
+                {"text": "Not Known", "value": "groupC"}
+            ],
+            "multi": false
+        },
+        {
+            "key": "age",
+            "question": "Have you been in contact with a suspected/confirmed COVID-19 patient",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "Yes", "value": "groupA"},
+                {"text": "No", "value": "groupB"},
+                {"text": "Not Sure", "value": "groupC"}
+            ],
+            "multi": false
+        },
+        {
+            "key": "age",
+            "question": "How did the contact happened",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "Working together", "value": "groupA"},
+                {"text": "Face to face contact within 1 meter", "value": "groupB"},
+                {"text": "Travelling together", "value": "groupC"},
+                {"text": "Living in the same environment", "value": "groupD"},
+                {"text": "Health care associated exposure", "value": "groupE"},
+                {"text": "Not sure", "value": "groupA"}
+            ],
+            "multi": true
+        },
+        {
+            "key": "age",
+            "question": "Do you show any of the following symptoms",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "Difficulty in breathing", "value": "groupA"},
+                {"text": "Cough", "value": "groupB"},
+                {"text": "Tiredness and fatigue", "value": "groupC"},
+                {"text": "Fever", "value": "groupD"}
+            ],
+            "multi": true
+        },
+        {
+            "key": "age",
+            "question": "Do you have any of the following",
+            "answer_radio": {"text":"", "value":""},
+            "answers_multi": [],
+            "answers_selection": [
+                {"text": "Diabetes", "value": "groupA"},
+                {"text": "Asthmatic", "value": "groupB"},
+                {"text": "Cancer", "value": "groupC"},
+                {"text": "Hyper Tension (Blood Pressure)", "value": "groupD"},
+                {"text": "Tuberculosis", "value": "groupE"},
+                {"text": "Respiratory illness", "value": "groupF"}
+            ],
+            "multi": true
+        }
+    ]
+}

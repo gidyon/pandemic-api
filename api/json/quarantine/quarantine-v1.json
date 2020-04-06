@@ -1,0 +1,15 @@
+{
+    "revision": 1,
+    "definition": "Self quarantine is an act of individuals who may have been exposed to COVID-19 separating themselves for 14 days to monitor if the develope symptoms.",
+    "audience": "Self quarantine is an act of individuals who may have been exposed to COVID-19 separating themselves for 14 days to monitor if the develope symptoms.",
+    "source": "http://www.health.go.ke/#1585095951740-8f89b553-e41573d1-981a",
+    "source_organization": "Ministry of Health",
+    "measures": [
+        "Stay in a separate room and use a separate bathroom if available.Disinfect surfaces and clothing.",
+        "Ensure surfaces in the household are cleaned and disinfected.",
+        "Avoid sharing household items.Wash this items thoroughly after use.",
+        "Clean your hands with soap and running water for up to 20 seconds.if that is not available,clean with alcohol based hand sanitizer.",
+        "No visitors unless the person needs to be in your home.",
+        "Wear a facemask if you must be around other people."
+    ]
+}
