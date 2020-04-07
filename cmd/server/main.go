@@ -59,39 +59,48 @@ func main() {
 
 	router := httprouter.New()
 
+	// Account API
+	app.RegisterAccountAPI(router, sqlDB)
+
+	// Confirmed cases API
+	app.RegisterConfirmedCasesAPI(router, sqlDB)
+
 	// Contacts API
-	app.RegisterContactAPIRouter(router, &app.Options{
+	app.RegisterContactAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, contactsPreffix),
 		FilePrefix: contactsPreffix,
 		Revision:   1,
 	})
 
 	// FAQ API
-	app.RegisterFAQAPIRouter(router, &app.Options{
+	app.RegisterFAQAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, faqPreffix),
 		FilePrefix: faqPreffix,
 		Revision:   1,
 	})
 
 	// SelfQuarantine API
-	app.RegisterQuarantineAPIRouter(router, &app.Options{
+	app.RegisterQuarantineMeasuresAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, quarantinePreffix),
 		FilePrefix: quarantinePreffix,
 		Revision:   1,
 	})
 
 	// Questionnaire API
-	app.RegisterQuestionnaireAPIRouter(router, &app.Options{
+	app.RegisterQuestionnaireAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, questionnairePrefix),
 		FilePrefix: questionnairePrefix,
 		Revision:   1,
 	})
 
 	// Report API
-	app.RegisterReportAPIRouter(router, sqlDB)
+	app.RegisterReportedCasesAPI(router, sqlDB)
+
+	// Suspected cases API
+	app.RegisterSuspectedCasesAPI(router, sqlDB)
 
 	// Symptoms API
-	app.RegisterSymptomsAPIRouter(router, &app.Options{
+	app.RegisterPandemicSymptomsAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, symptomsPreffix),
 		FilePrefix: symptomsPreffix,
 		Revision:   1,
