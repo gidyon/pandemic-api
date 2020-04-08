@@ -14,7 +14,8 @@ spec:
     spec:
       containers:
       - name: fightcovid19
-        image: gidyon/fightcovid19-api:v0.1
+        image: gidyon/fightcovid19-api:v0.3
+        args: ["--env"]
         imagePullPolicy: Always
         ports:
         - containerPort: 443
@@ -55,4 +56,4 @@ spec:
       volumes:
       - name: app-tls
         secret:
-          secretName: fightcovid19-tls
+          secretName: fightcovid19-tls-v1
