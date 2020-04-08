@@ -59,6 +59,9 @@ func main() {
 
 	router := httprouter.New()
 
+	// Start revisions manager
+	app.StartRevisionManager(sqlDB)
+
 	// Account API
 	app.RegisterAccountAPI(router, sqlDB)
 
