@@ -1,0 +1,30 @@
+{
+	"revision": 2,
+	"source": "COVID19 Task Force",
+	"source_organization": "Ministry of Health",
+	"last_updated": "2020-04-07T22:20:44.840643093+03:00",
+	"general_hotlines": [
+		{
+			"number": "07123781",
+			"description": "Call free number"
+		}
+	],
+	"general_emails": [
+		{
+			"email": "covid19response@gmail.com",
+			"description": "Response team email address"
+		}
+	],
+	"counties_hotlines": [
+		{
+			"county": "Nairobi",
+			"hotlines": [
+				"07123456hh",
+				"078yyyttt"
+			],
+			"emails": [
+				"nai@response.team"
+			]
+		}
+	]
+}
