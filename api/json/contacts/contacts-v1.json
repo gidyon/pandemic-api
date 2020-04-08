@@ -8,7 +8,7 @@
     "general_emails": [
         {"email": "covid19response@gmail.com", "description": "Response team email address"}
     ],
-    "counties_hotline": [
+    "counties_hotlines": [
         {"county": "Nairobi", "hotlines": ["0978vvvv"], "emails":["xyz@testing.na.com"]},
         {"county": "Mombasa", "hotlines": ["0978mmmm"], "emails":["xyz@testing.mb.com"]},
         {"county": "Kiambu", "hotlines": ["0978kkkk"], "emails":["xyz@testing.km.com"]}

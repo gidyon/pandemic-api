@@ -2,7 +2,7 @@
     "revision": 1,
     "source": "COVID-19 Task Force",
     "source_organization": "Ministry Of Health",
-    "questionnaire": [
+    "questionnaires": [
         {
             "key": "age",
             "question": "Your age bracket",
