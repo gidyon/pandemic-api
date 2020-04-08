@@ -113,7 +113,7 @@ type QuestionnaireData struct {
 	Source             string    `json:"source,omitempty"`
 	SourceOrganization string    `json:"source_organization,omitempty"`
 	LastUpdated        time.Time `json:"last_updated,omitempty"`
-	Questionnaire      []struct {
+	Questionnaires     []struct {
 		Key         string `json:"key,omitempty"`
 		Question    string `json:"question,omitempty"`
 		AnswerRadio struct {
@@ -129,7 +129,7 @@ type QuestionnaireData struct {
 			Value string `json:"value,omitempty"`
 		} `json:"answers_selection,omitempty"`
 		Multi bool `json:"multi,omitempty"`
-	} `json:"questionnaire,omitempty"`
+	} `json:"questionnaires,omitempty"`
 }
 
 func (questionnaire *QuestionnaireData) validate() error {
@@ -137,7 +137,7 @@ func (questionnaire *QuestionnaireData) validate() error {
 	switch {
 	case questionnaire.Revision == 0:
 		err = errors.New("revision number missing")
-	case len(questionnaire.Questionnaire) == 0:
+	case len(questionnaire.Questionnaires) == 0:
 		err = errors.New("questionnaires measures missing")
 	case strings.TrimSpace(questionnaire.Source) == "":
 		err = errors.New("source is required")
