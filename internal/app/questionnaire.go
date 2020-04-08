@@ -5,17 +5,30 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// RegisterQuestionnaireAPIRouter registers http router for the questionnaire API
-func RegisterQuestionnaireAPIRouter(router *httprouter.Router, opt *Options) {
+const questionnaireGroup = "QUESTIONNAIRE"
+
+type questionnaireAPI struct {
+	rootDir        string
+	filePrefix     string
+	revision       int
+	mu             *sync.RWMutex
+	questionnaires map[int]*QuestionnaireData
+}
+
+// RegisterQuestionnaireAPI registers http router for the questionnaire API
+func RegisterQuestionnaireAPI(router *httprouter.Router, opt *Options) {
 	// Validation
 	var err error
 	switch {
@@ -28,36 +41,70 @@ func RegisterQuestionnaireAPIRouter(router *httprouter.Router, opt *Options) {
 	case opt.Revision == 0:
 		err = errors.New("revision must not be 0")
 	}
+	handleError(err)
 
-	questionnaire := &questionnaireAPI{
-		rootDir:       opt.RootDir,
-		filePrefix:    opt.FilePrefix,
-		mu:            &sync.RWMutex{},
-		questionnaire: &QuestionnaireData{},
+	questionnaireAPI := &questionnaireAPI{
+		rootDir:        opt.RootDir,
+		filePrefix:     opt.FilePrefix,
+		mu:             &sync.RWMutex{},
+		questionnaires: make(map[int]*QuestionnaireData, 0),
 	}
 
 	// read from file
 	file, err := os.Open(filepath.Join(opt.RootDir, fmt.Sprintf("%s-v%d.json", opt.FilePrefix, opt.Revision)))
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
 
 	// update data from file
-	err = json.NewDecoder(file).Decode(questionnaire.questionnaire)
-	if err != nil {
-		logrus.Fatalln(err)
+	questionnaire := &QuestionnaireData{}
+	err = json.NewDecoder(file).Decode(questionnaire)
+
+	// get json
+	bs, err := json.Marshal(questionnaire)
+	handleError(err)
+
+	// add the questionnaire only if it doesn't exist
+	_, err = revisionManager.Get(questionnaireGroup, questionnaire.Revision)
+	if gorm.IsRecordNotFoundError(err) {
+		err = revisionManager.Add(&revision{
+			Revision:      questionnaire.Revision,
+			ResourceGroup: questionnaireGroup,
+			Data:          bs,
+		})
+		handleError(err)
 	}
 
-	// Update endpoints
-	router.GET("/questionnaire", questionnaire.GetQuestionnaire)
-	router.POST("/questionnaire", questionnaire.UpdateQuestionnaire)
-}
+	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
 
-type questionnaireAPI struct {
-	rootDir       string
-	filePrefix    string
-	mu            *sync.RWMutex
-	questionnaire *QuestionnaireData
+	go updateRevisionWorker(dur, func() {
+		// get new revision
+		revisions, err := revisionManager.List(questionnaireGroup)
+		if err != nil {
+			logrus.Infof("failed to list revisions from database: %v", err)
+			return
+		}
+
+		// Update Map
+		questionnaireAPI.mu.Lock()
+		defer questionnaireAPI.mu.Unlock()
+
+		for _, revision := range revisions {
+			questionnaire := &QuestionnaireData{}
+			err = json.Unmarshal(revision.Data, questionnaire)
+			if err != nil {
+				logrus.Infof("failed to unmarshal revision: %v", err)
+				continue
+			}
+
+			questionnaireAPI.questionnaires[revision.Revision] = questionnaire
+			questionnaireAPI.revision = revision.Revision
+		}
+
+		logrus.Infoln("Questionnaire measures updated")
+	})
+
+	// Update endpoints
+	router.GET("/api/questionnaire", questionnaireAPI.GetQuestionnaire)
+	router.PUT("/api/questionnaire", questionnaireAPI.UpdateQuestionnaire)
 }
 
 // QuestionnaireData contains Frequently Asked Questions
@@ -100,18 +147,36 @@ func (questionnaire *QuestionnaireData) validate() error {
 	return err
 }
 
-func (questionnaire *questionnaireAPI) GetQuestionnaire(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	questionnaire.mu.RLock()
-	err := json.NewEncoder(w).Encode(questionnaire.questionnaire)
+func (questionnaireAPI *questionnaireAPI) GetQuestionnaire(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	revisionStr := r.URL.Query().Get("revision")
+	if revisionStr == "" {
+		revisionStr = "0"
+	}
+	revision, err := strconv.Atoi(revisionStr)
 	if err != nil {
-		questionnaire.mu.RUnlock()
+		http.Error(w, "failed to convert revision to number", http.StatusBadRequest)
+		return
+	}
+
+	questionnaireAPI.mu.RLock()
+	defer questionnaireAPI.mu.RUnlock()
+
+	questionnaire, ok := questionnaireAPI.questionnaires[revision]
+	if !ok {
+		err = json.NewEncoder(w).Encode(questionnaireAPI.questionnaires[questionnaireAPI.revision])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	err = json.NewEncoder(w).Encode(questionnaire)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	questionnaire.mu.RUnlock()
 }
 
-func (questionnaire *questionnaireAPI) UpdateQuestionnaire(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (questionnaireAPI *questionnaireAPI) UpdateQuestionnaire(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Marshaling
 	newQuestionnaire := &QuestionnaireData{}
 	err := json.NewDecoder(r.Body).Decode(newQuestionnaire)
@@ -130,22 +195,24 @@ func (questionnaire *questionnaireAPI) UpdateQuestionnaire(w http.ResponseWriter
 	// Update time
 	newQuestionnaire.LastUpdated = time.Now()
 
-	fileName := filepath.Join(questionnaire.rootDir, fmt.Sprintf("%s-v%d.json", questionnaire.filePrefix, newQuestionnaire.Revision))
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Write to file
-	err = json.NewEncoder(file).Encode(newQuestionnaire)
+	// Get new revision json
+	bs, err := json.Marshal(newQuestionnaire)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	questionnaire.mu.Lock()
-	questionnaire.questionnaire = newQuestionnaire
-	questionnaire.mu.Unlock()
+	// Add revision to database
+	err = revisionManager.Add(&revision{
+		Revision:      newQuestionnaire.Revision,
+		ResourceGroup: questionnaireGroup,
+		Data:          bs,
+	})
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to add revision to db: %v", err)
+		http.Error(w, errMsg, http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("questionnaire scheduled for update"))
 }

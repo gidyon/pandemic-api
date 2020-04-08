@@ -5,14 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+const symptomGroup = "SYMPTOMS"
 
 // Options contains parameters for NewSymptomsAPI
 type Options struct {
@@ -21,8 +26,8 @@ type Options struct {
 	Revision   int
 }
 
-// RegisterSymptomsAPIRouter registers http router for the symptoms API
-func RegisterSymptomsAPIRouter(router *httprouter.Router, opt *Options) {
+// RegisterPandemicSymptomsAPI registers http router for the symptoms API
+func RegisterPandemicSymptomsAPI(router *httprouter.Router, opt *Options) {
 	// Validation
 	var err error
 	switch {
@@ -35,39 +40,78 @@ func RegisterSymptomsAPIRouter(router *httprouter.Router, opt *Options) {
 	case opt.Revision == 0:
 		err = errors.New("revision must not be 0")
 	}
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
 
-	symptoms := &symptomsAPI{
+	symptomsAPI := &symptomsAPI{
 		rootDir:    opt.RootDir,
 		filePrefix: opt.FilePrefix,
 		mu:         &sync.RWMutex{},
-		symptoms:   &SymptomsData{},
+		symptoms:   make(map[int]*SymptomsData, 0),
 	}
 
 	// read from file
 	file, err := os.Open(filepath.Join(opt.RootDir, fmt.Sprintf("%s-v%d.json", opt.FilePrefix, opt.Revision)))
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
 
 	// update data from file
-	err = json.NewDecoder(file).Decode(symptoms.symptoms)
-	if err != nil {
-		logrus.Fatalln(err)
+	symptom := &SymptomsData{}
+	err = json.NewDecoder(file).Decode(symptom)
+
+	// get json
+	bs, err := json.Marshal(symptom)
+	handleError(err)
+
+	// add the symptom only if it doesn't exist
+	_, err = revisionManager.Get(symptomGroup, symptom.Revision)
+	if gorm.IsRecordNotFoundError(err) {
+		err = revisionManager.Add(&revision{
+			Revision:      symptom.Revision,
+			ResourceGroup: symptomGroup,
+			Data:          bs,
+		})
+		handleError(err)
 	}
 
+	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
+
+	go updateRevisionWorker(dur, func() {
+		// get new revision
+		revisions, err := revisionManager.List(symptomGroup)
+		if err != nil {
+			logrus.Infof("failed to list revisions from database: %v", err)
+			return
+		}
+
+		// Update Map
+		symptomsAPI.mu.Lock()
+		defer symptomsAPI.mu.Unlock()
+
+		for _, revision := range revisions {
+			symptom := &SymptomsData{}
+			err = json.Unmarshal(revision.Data, symptom)
+			if err != nil {
+				logrus.Infof("failed to unmarshal revision: %v", err)
+				continue
+			}
+
+			symptomsAPI.symptoms[revision.Revision] = symptom
+			symptomsAPI.revision = revision.Revision
+		}
+
+		logrus.Infoln("Symptoms measures updated")
+	})
+
 	// Update endpoints
-	router.GET("/symptoms", symptoms.GetSymptoms)
-	router.POST("/symptoms", symptoms.UpdateSymptom)
+	router.GET("/api/symptoms", symptomsAPI.GetSymptoms)
+	router.PUT("/api/symptoms", symptomsAPI.UpdateSymptom)
 }
 
 type symptomsAPI struct {
 	rootDir    string
 	filePrefix string
+	revision   int
 	mu         *sync.RWMutex
-	symptoms   *SymptomsData
+	symptoms   map[int]*SymptomsData
 }
 
 // SymptomsData contains Frequently Asked Questions
@@ -97,16 +141,35 @@ func (symptoms *SymptomsData) validate() error {
 	return err
 }
 
-func (symptoms *symptomsAPI) GetSymptoms(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	symptoms.mu.RLock()
-	err := json.NewEncoder(w).Encode(symptoms.symptoms)
+func (symptomsAPI *symptomsAPI) GetSymptoms(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	revisionStr := r.URL.Query().Get("revision")
+	if revisionStr == "" {
+		revisionStr = "0"
+	}
+	revision, err := strconv.Atoi(revisionStr)
+	if err != nil {
+		http.Error(w, "failed to convert revision to number", http.StatusBadRequest)
+		return
+	}
+
+	symptomsAPI.mu.RLock()
+	defer symptomsAPI.mu.RUnlock()
+
+	symptom, ok := symptomsAPI.symptoms[revision]
+	if !ok {
+		err = json.NewEncoder(w).Encode(symptomsAPI.symptoms[symptomsAPI.revision])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	err = json.NewEncoder(w).Encode(symptom)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	symptoms.mu.RUnlock()
 }
 
-func (symptoms *symptomsAPI) UpdateSymptom(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (symptomsAPI *symptomsAPI) UpdateSymptom(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Marshaling
 	newSymptoms := &SymptomsData{}
 	err := json.NewDecoder(r.Body).Decode(newSymptoms)
@@ -125,22 +188,24 @@ func (symptoms *symptomsAPI) UpdateSymptom(w http.ResponseWriter, r *http.Reques
 	// Update time
 	newSymptoms.LastUpdated = time.Now()
 
-	fileName := filepath.Join(symptoms.rootDir, symptoms.filePrefix, fmt.Sprintf("-v%d.json", newSymptoms.Revision))
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Write to file
-	err = json.NewEncoder(file).Encode(newSymptoms)
+	// Get new revision json
+	bs, err := json.Marshal(newSymptoms)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	symptoms.mu.Lock()
-	symptoms.symptoms = newSymptoms
-	symptoms.mu.Unlock()
+	// Add revision to database
+	err = revisionManager.Add(&revision{
+		Revision:      newSymptoms.Revision,
+		ResourceGroup: symptomGroup,
+		Data:          bs,
+	})
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to add revision to db: %v", err)
+		http.Error(w, errMsg, http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("symptoms scheduled for update"))
 }

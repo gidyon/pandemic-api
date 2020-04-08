@@ -5,24 +5,30 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
+const contactGroup = "CONTACTS"
+
 type contactAPI struct {
 	rootDir    string
 	filePrefix string
+	revision   int
 	mu         *sync.RWMutex
-	contacts   *ContactData
+	contacts   map[int]*ContactData
 }
 
-// RegisterContactAPIRouter registers http router for the contact API
-func RegisterContactAPIRouter(router *httprouter.Router, opt *Options) {
+// RegisterContactAPI registers http router for the contact API
+func RegisterContactAPI(router *httprouter.Router, opt *Options) {
 	// Validation
 	var err error
 	switch {
@@ -35,29 +41,72 @@ func RegisterContactAPIRouter(router *httprouter.Router, opt *Options) {
 	case opt.Revision == 0:
 		err = errors.New("revision must not be 0")
 	}
+	handleError(err)
 
 	c := &contactAPI{
 		rootDir:    opt.RootDir,
 		filePrefix: opt.FilePrefix,
+		revision:   opt.Revision,
 		mu:         &sync.RWMutex{},
-		contacts:   &ContactData{},
+		contacts:   make(map[int]*ContactData, 0),
 	}
 
 	// read from file
 	file, err := os.Open(filepath.Join(opt.RootDir, fmt.Sprintf("%s-v%d.json", opt.FilePrefix, opt.Revision)))
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
+	defer file.Close()
 
 	// update data from file
-	err = json.NewDecoder(file).Decode(c.contacts)
-	if err != nil {
-		logrus.Fatalln(err)
+	contact := &ContactData{}
+	err = json.NewDecoder(file).Decode(contact)
+
+	// get json
+	bs, err := json.Marshal(contact)
+	handleError(err)
+
+	// add the contact only if it doesn't exist
+	_, err = revisionManager.Get(contactGroup, contact.Revision)
+	if gorm.IsRecordNotFoundError(err) {
+		err = revisionManager.Add(&revision{
+			Revision:      contact.Revision,
+			ResourceGroup: contactGroup,
+			Data:          bs,
+		})
+		handleError(err)
 	}
 
+	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
+
+	go updateRevisionWorker(dur, func() {
+		// get new revision
+		revisions, err := revisionManager.List(contactGroup)
+		if err != nil {
+			logrus.Infof("failed to list revisions from database: %v", err)
+			return
+		}
+
+		// Update Map
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		for _, revision := range revisions {
+			contact := &ContactData{}
+			err = json.Unmarshal(revision.Data, contact)
+			if err != nil {
+				logrus.Infof("failed to unmarshal revision: %v", err)
+				continue
+			}
+
+			c.contacts[revision.Revision] = contact
+			c.revision = revision.Revision
+		}
+
+		logrus.Infoln("Contacts updated")
+	})
+
 	// Update endpoints
-	router.GET("/contacts", c.GetContact)
-	router.POST("/contacts", c.UpdateContact)
+	router.GET("/api/contacts", c.GetContact)
+	router.PUT("/api/contacts", c.UpdateContact)
 }
 
 // ContactData contains contact data
@@ -101,12 +150,31 @@ func (c *ContactData) validate() error {
 }
 
 func (contact *contactAPI) GetContact(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	contact.mu.RLock()
-	err := json.NewEncoder(w).Encode(contact.contacts)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	revisionStr := r.URL.Query().Get("revision")
+	if revisionStr == "" {
+		revisionStr = "0"
 	}
-	contact.mu.RUnlock()
+	revision, err := strconv.Atoi(revisionStr)
+	if err != nil {
+		http.Error(w, "failed to convert revision to number", http.StatusBadRequest)
+		return
+	}
+
+	contact.mu.RLock()
+	defer contact.mu.RUnlock()
+
+	contacts, ok := contact.contacts[revision]
+	if !ok {
+		err := json.NewEncoder(w).Encode(contact.contacts[contact.revision])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	err = json.NewEncoder(w).Encode(contacts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (contact *contactAPI) UpdateContact(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -128,23 +196,24 @@ func (contact *contactAPI) UpdateContact(w http.ResponseWriter, r *http.Request,
 	// Update time
 	newContact.LastUpdated = time.Now()
 
-	// Create local file backup
-	fileName := filepath.Join(contact.rootDir, fmt.Sprintf("%s-v%d.json", contact.filePrefix, newContact.Revision))
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer file.Close()
-
-	// Writing response
-	err = json.NewEncoder(file).Encode(newContact)
+	// Get new revision json
+	bs, err := json.Marshal(newContact)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	contact.mu.Lock()
-	contact.contacts = newContact
-	contact.mu.Unlock()
+	// Add revision to database
+	err = revisionManager.Add(&revision{
+		Revision:      newContact.Revision,
+		ResourceGroup: contactGroup,
+		Data:          bs,
+	})
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to add revision to db: %v", err)
+		http.Error(w, errMsg, http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("contacts scheduled for update"))
 }

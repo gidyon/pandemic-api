@@ -5,17 +5,30 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// RegisterQuarantineAPIRouter registers a http router for the quarantines API
-func RegisterQuarantineAPIRouter(router *httprouter.Router, opt *Options) {
+const quarantineGroup = "QUARANTINE"
+
+type quarantineAPI struct {
+	rootDir     string
+	filePrefix  string
+	revision    int
+	mu          *sync.RWMutex
+	quarantines map[int]*QuarantineData
+}
+
+// RegisterQuarantineMeasuresAPI registers a http router for the quarantines API
+func RegisterQuarantineMeasuresAPI(router *httprouter.Router, opt *Options) {
 	// Validation
 	var err error
 	switch {
@@ -28,36 +41,71 @@ func RegisterQuarantineAPIRouter(router *httprouter.Router, opt *Options) {
 	case opt.Revision == 0:
 		err = errors.New("revision must not be 0")
 	}
+	handleError(err)
 
-	quarantine := &quarantineAPI{
-		rootDir:    opt.RootDir,
-		filePrefix: opt.FilePrefix,
-		mu:         &sync.RWMutex{},
-		quarantine: &QuarantineData{},
+	quarantineAPI := &quarantineAPI{
+		rootDir:     opt.RootDir,
+		filePrefix:  opt.FilePrefix,
+		revision:    opt.Revision,
+		mu:          &sync.RWMutex{},
+		quarantines: make(map[int]*QuarantineData, 0),
 	}
 
 	// read from file
 	file, err := os.Open(filepath.Join(opt.RootDir, fmt.Sprintf("%s-v%d.json", opt.FilePrefix, opt.Revision)))
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
 
 	// update data from file
-	err = json.NewDecoder(file).Decode(quarantine.quarantine)
-	if err != nil {
-		logrus.Fatalln(err)
+	quarantine := &QuarantineData{}
+	err = json.NewDecoder(file).Decode(quarantine)
+
+	// get json
+	bs, err := json.Marshal(quarantine)
+	handleError(err)
+
+	// add the quarantine only if it doesn't exist
+	_, err = revisionManager.Get(quarantineGroup, quarantine.Revision)
+	if gorm.IsRecordNotFoundError(err) {
+		err = revisionManager.Add(&revision{
+			Revision:      quarantine.Revision,
+			ResourceGroup: quarantineGroup,
+			Data:          bs,
+		})
+		handleError(err)
 	}
 
-	// Update endpoints
-	router.GET("/quarantine/measures", quarantine.GetMeasures)
-	router.POST("/quarantine", quarantine.UpdateQurantine)
-}
+	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
 
-type quarantineAPI struct {
-	rootDir    string
-	filePrefix string
-	mu         *sync.RWMutex
-	quarantine *QuarantineData
+	go updateRevisionWorker(dur, func() {
+		// get new revision
+		revisions, err := revisionManager.List(quarantineGroup)
+		if err != nil {
+			logrus.Infof("failed to list revisions from database: %v", err)
+			return
+		}
+
+		// Update Map
+		quarantineAPI.mu.Lock()
+		defer quarantineAPI.mu.Unlock()
+
+		for _, revision := range revisions {
+			quarantine := &QuarantineData{}
+			err = json.Unmarshal(revision.Data, quarantine)
+			if err != nil {
+				logrus.Infof("failed to unmarshal revision: %v", err)
+				continue
+			}
+
+			quarantineAPI.quarantines[revision.Revision] = quarantine
+			quarantineAPI.revision = revision.Revision
+		}
+
+		logrus.Infoln("Quarantine measures updated")
+	})
+
+	// Update endpoints
+	router.GET("/api/quarantine/measures", quarantineAPI.GetMeasures)
+	router.PUT("/api/quarantine", quarantineAPI.UpdateQurantine)
 }
 
 // QuarantineData contains Frequently Asked Questions
@@ -90,50 +138,71 @@ func (quarantine *QuarantineData) validate() error {
 	return err
 }
 
-func (quarantine *quarantineAPI) GetMeasures(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	quarantine.mu.RLock()
-	err := json.NewEncoder(w).Encode(quarantine.quarantine)
+func (quarantineAPI *quarantineAPI) GetMeasures(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	revisionStr := r.URL.Query().Get("revision")
+	if revisionStr == "" {
+		revisionStr = "0"
+	}
+	revision, err := strconv.Atoi(revisionStr)
+	if err != nil {
+		http.Error(w, "failed to convert revision to number", http.StatusBadRequest)
+		return
+	}
+
+	quarantineAPI.mu.RLock()
+	defer quarantineAPI.mu.RUnlock()
+
+	quarantine, ok := quarantineAPI.quarantines[revision]
+	if !ok {
+		err := json.NewEncoder(w).Encode(quarantineAPI.quarantines[quarantineAPI.revision])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	err = json.NewEncoder(w).Encode(quarantine)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	quarantine.mu.RUnlock()
 }
 
-func (quarantine *quarantineAPI) UpdateQurantine(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (quarantineAPI *quarantineAPI) UpdateQurantine(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Marshaling
-	newquarantine := &QuarantineData{}
-	err := json.NewDecoder(r.Body).Decode(newquarantine)
+	newQuarantine := &QuarantineData{}
+	err := json.NewDecoder(r.Body).Decode(newQuarantine)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Validation
-	err = newquarantine.validate()
+	err = newQuarantine.validate()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Update time
-	newquarantine.LastUpdated = time.Now()
+	newQuarantine.LastUpdated = time.Now()
 
-	fileName := filepath.Join(quarantine.rootDir, fmt.Sprintf("%s-v%d.json", quarantine.filePrefix, newquarantine.Revision))
-	file, err := os.OpenFile(fileName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0666)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	// Write new measures to file
-	err = json.NewEncoder(file).Encode(newquarantine)
+	// Get new revision json
+	bs, err := json.Marshal(newQuarantine)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	quarantine.mu.Lock()
-	quarantine.quarantine = newquarantine
-	quarantine.mu.Unlock()
+	// Add revision to database
+	err = revisionManager.Add(&revision{
+		Revision:      newQuarantine.Revision,
+		ResourceGroup: quarantineGroup,
+		Data:          bs,
+	})
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to add revision to db: %v", err)
+		http.Error(w, errMsg, http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("quarantine measures scheduled for update"))
 }

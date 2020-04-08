@@ -3,7 +3,6 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"github.com/Sirupsen/logrus"
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
@@ -13,14 +12,14 @@ import (
 	"time"
 )
 
-const reportsTable = "covid19_cases_report"
+const reportedCasesTable = "reported_cases"
 
 type reportAPI struct {
 	sqlDB *gorm.DB
 }
 
-// RegisterReportAPIRouter registers http router for the report API
-func RegisterReportAPIRouter(router *httprouter.Router, sqlDB *gorm.DB) {
+// RegisterReportedCasesAPI registers http router for the report API
+func RegisterReportedCasesAPI(router *httprouter.Router, sqlDB *gorm.DB) {
 	// Validation
 	var err error
 	switch {
@@ -29,52 +28,55 @@ func RegisterReportAPIRouter(router *httprouter.Router, sqlDB *gorm.DB) {
 	case router == nil:
 		err = errors.New("router must not be nil")
 	}
-	if err != nil {
-		logrus.Fatalln(err)
-	}
+	handleError(err)
 
-	report := &reportAPI{
+	reportAPI := &reportAPI{
 		sqlDB: sqlDB,
 	}
 
-	router.GET("/case/:reportID", report.GetReport)
-	router.GET("/case", report.GetReport)
-	router.POST("/case", report.AddReport)
+	// Auto migration
+	err = reportAPI.sqlDB.AutoMigrate(&ReportedCase{}).Error
+	handleError(err)
+
+	router.GET("/api/cases/reported/:caseId", reportAPI.GetReport)
+	router.GET("/api/cases/reported", reportAPI.ListReport)
+	router.POST("/api/cases/reported", reportAPI.AddReport)
+	router.PATCH("/api/cases/reported/:caseId/attend", reportAPI.MarkAttended)
 }
 
-// COVID19CaseReport is payload data for reporting COVID-19 cases
-type COVID19CaseReport struct {
-	ReportID              string
-	ReporteeID            string
-	ReporterFullName      string
-	ReporterEmail         string
-	ReporterPhone         string
-	ReporterProfileThumb  string
-	County                string
-	SubCounty             string
-	Constituency          string
-	Ward                  string
-	ReporteeFullName      string
-	ReporteePhone         string
-	ReporteeCondition     string
-	ReporteeRelationship  string
-	AdditionalInformation string
-	Attended              bool
-	CreatedAt             time.Time
-	DeletedAt             *time.Time
+// ReportedCase is payload data for reporting COVID-19 cases
+type ReportedCase struct {
+	CaseID                string     `json:"case_id,omitempty" gorm:"primary_key;type:varchar(50);not null"`
+	ReporterFullName      string     `json:"reporter_full_name,omitempty" gorm:"type:varchar(50);not null"`
+	ReporterEmail         string     `json:"reporter_email,omitempty" gorm:"index:query_index;type:varchar(50);not null"`
+	ReporterPhone         string     `json:"reporter_phone,omitempty" gorm:"index:query_index;type:varchar(15);not null"`
+	ReporterProfileThumb  string     `json:"reporter_profile_thumb,omitempty" gorm:"type:varchar(256)"`
+	County                string     `json:"county,omitempty" gorm:"type:varchar(50);not null"`
+	SubCounty             string     `json:"sub_county,omitempty" gorm:"type:varchar(50);not null"`
+	Constituency          string     `json:"constituency,omitempty" gorm:"type:varchar(50);not null"`
+	Ward                  string     `json:"ward,omitempty" gorm:"type:varchar(50);not null"`
+	ReporteeFullName      string     `json:"reportee_full_name,omitempty" gorm:"type:varchar(50);not null"`
+	ReporteePhone         string     `json:"reportee_phone,omitempty" gorm:"type:varchar(15);not null"`
+	ReporteeEmail         string     `json:"reportee_email,omitempty" gorm:"type:varchar(50);not null"`
+	ReporteeCondition     string     `json:"reportee_condition,omitempty" gorm:"type:varchar(30);not null"`
+	ReporteeRelationship  string     `json:"reportee_relationship,omitempty" gorm:"type:varchar(30);not null"`
+	AdditionalInformation string     `json:"additional_information,omitempty" gorm:"type:text;not null"`
+	Attended              bool       `json:"attended" gorm:"type:tinyint(1);default:0"`
+	CreatedAt             time.Time  `json:"-"`
+	DeletedAt             *time.Time `json:"-"`
 }
 
 // BeforeCreate is a hook that is set before creating object
-func (*COVID19CaseReport) BeforeCreate(scope *gorm.Scope) error {
-	return scope.SetColumn("ReportID", uuid.New().String())
+func (*ReportedCase) BeforeCreate(scope *gorm.Scope) error {
+	return scope.SetColumn("CaseID", uuid.New().String())
 }
 
 // TableName is the table name
-func (*COVID19CaseReport) TableName() string {
-	return reportsTable
+func (*ReportedCase) TableName() string {
+	return reportedCasesTable
 }
 
-func (report *COVID19CaseReport) validate() error {
+func (report *ReportedCase) validate() error {
 	var err error
 	switch {
 	case strings.TrimSpace(report.ReporterFullName) == "":
@@ -99,19 +101,19 @@ func (report *COVID19CaseReport) validate() error {
 
 func (reportAPI *reportAPI) GetReport(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	// Get report id
-	reportID := p.ByName("reportID")
-	if strings.TrimSpace(reportID) == "" {
-		http.Error(w, "missing report id", http.StatusBadRequest)
+	caseID := p.ByName("caseId")
+	if strings.TrimSpace(caseID) == "" {
+		http.Error(w, "missing case id", http.StatusBadRequest)
 		return
 	}
-	report := &COVID19CaseReport{}
+	report := &ReportedCase{}
 
 	// Get from database
-	err := reportAPI.sqlDB.First(report, "report_id=?", reportID).Error
+	err := reportAPI.sqlDB.First(report, "case_id=?", caseID).Error
 	switch {
 	case err == nil:
 	case gorm.IsRecordNotFoundError(err):
-		http.Error(w, "report not found", http.StatusBadRequest)
+		http.Error(w, "reported case not found", http.StatusBadRequest)
 		return
 	default:
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -129,10 +131,10 @@ func (reportAPI *reportAPI) GetReport(w http.ResponseWriter, r *http.Request, p 
 func (reportAPI *reportAPI) ListReport(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	query := r.URL.Query()
 	// Get filters
-	counties := strings.Split(query.Get("counties"), ",")
-	subCounties := strings.Split(query.Get("sub_counties"), ",")
-	constituencies := strings.Split(query.Get("constituencies"), ",")
-	wards := strings.Split(query.Get("wards"), ",")
+	counties := splitQuery(query.Get("counties"), ",")
+	subCounties := splitQuery(query.Get("sub_counties"), ",")
+	constituencies := splitQuery(query.Get("constituencies"), ",")
+	wards := splitQuery(query.Get("wards"), ",")
 
 	// Pagination
 	ps, pn, err := getPaginationData(query.Get("page_size"), query.Get("page_number"))
@@ -157,10 +159,9 @@ func (reportAPI *reportAPI) ListReport(w http.ResponseWriter, r *http.Request, _
 		}
 		return db.Limit(ps).Offset(ps*pn - ps)
 	}(reportAPI.sqlDB)
-	defer db.Close()
 
 	// Execute query
-	reports := make([]*COVID19CaseReport, 0)
+	reports := make([]*ReportedCase, 0, ps)
 	err = db.Find(&reports).Error
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -178,6 +179,12 @@ func (reportAPI *reportAPI) ListReport(w http.ResponseWriter, r *http.Request, _
 const defaultPagesize = 50
 
 func getPaginationData(pageSize, pageNumber string) (int, int, error) {
+	if pageSize == "" {
+		pageSize = "0"
+	}
+	if pageNumber == "" {
+		pageNumber = "0"
+	}
 	ps, err := strconv.Atoi(pageSize)
 	if err != nil {
 		return 0, 0, err
@@ -197,7 +204,7 @@ func getPaginationData(pageSize, pageNumber string) (int, int, error) {
 
 func (reportAPI *reportAPI) AddReport(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Marshaling
-	report := &COVID19CaseReport{}
+	report := &ReportedCase{}
 	err := json.NewDecoder(r.Body).Decode(report)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -219,18 +226,25 @@ func (reportAPI *reportAPI) AddReport(w http.ResponseWriter, r *http.Request, _ 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Write success message response
+	err = json.NewEncoder(w).Encode(map[string]string{"case_id": report.CaseID})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (reportAPI *reportAPI) MarkAttended(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	// Get report id
-	reportID := p.ByName("reportID")
-	if strings.TrimSpace(reportID) == "" {
-		http.Error(w, "missing report id", http.StatusBadRequest)
+	caseID := p.ByName("caseId")
+	if strings.TrimSpace(caseID) == "" {
+		http.Error(w, "missing case id", http.StatusBadRequest)
 		return
 	}
 
 	// Update database
-	err := reportAPI.sqlDB.Table(reportsTable).Unscoped().Where("report_id=?", reportID).
+	err := reportAPI.sqlDB.Table(reportedCasesTable).Unscoped().Where("case_id=?", caseID).
 		Update("attended", true).Error
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -238,7 +252,7 @@ func (reportAPI *reportAPI) MarkAttended(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Write success message response
-	_, err = w.Write([]byte("success"))
+	_, err = w.Write([]byte("attended"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
