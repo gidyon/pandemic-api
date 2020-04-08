@@ -18,6 +18,9 @@ run: ## run compiled binary
 run_app: ## go run server
 	go run cmd/server/*.go
 
+run_app_online:
+	go build -o fightcovid19 ${PKG}/cmd/server && ./fightcovid19 --mysql-host=ec2-3-135-225-228.us-east-2.compute.amazonaws.com --mysql-port=30800 --mysql-user=root --mysql-schema=fightcovid19_staging --mysql-password=fightcovid19@2020
+
 docker_build: ## Create a docker image for the service
 ifdef tag
 	@docker build -t gidyon/$(PROJECT_NAME)-api:$(tag) .
