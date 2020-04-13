@@ -53,7 +53,6 @@ type ConfirmedPatient struct {
 	Email        string     `json:"email,omitempty" gorm:"index:query_index;type:varchar(50);unique_index;not null"`
 	Phone        string     `json:"phone,omitempty" gorm:"index:query_index;type:varchar(15);unique_index;not null"`
 	County       string     `json:"county,omitempty" gorm:"type:varchar(50);not null"`
-	SubCounty    string     `json:"sub_county,omitempty" gorm:"type:varchar(50);not null"`
 	Constituency string     `json:"constituency,omitempty" gorm:"type:varchar(50);not null"`
 	Ward         string     `json:"ward,omitempty" gorm:"type:varchar(50);not null"`
 	Residence    string     `json:"residence,omitempty" gorm:"type:varchar(50);not null"`
@@ -84,8 +83,6 @@ func (patient *ConfirmedPatient) validate() error {
 		err = errors.New("missing patient email and phone")
 	case strings.TrimSpace(patient.County) == "":
 		err = errors.New("missing patient county")
-	case strings.TrimSpace(patient.SubCounty) == "":
-		err = errors.New("missing patient sub-county")
 	case strings.TrimSpace(patient.Constituency) == "":
 		err = errors.New("missing patient constituency")
 	case strings.TrimSpace(patient.Ward) == "":

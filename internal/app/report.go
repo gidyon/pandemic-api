@@ -52,16 +52,19 @@ type ReportedCase struct {
 	ReporterPhone         string     `json:"reporter_phone,omitempty" gorm:"index:query_index;type:varchar(15);not null"`
 	ReporterProfileThumb  string     `json:"reporter_profile_thumb,omitempty" gorm:"type:varchar(256)"`
 	County                string     `json:"county,omitempty" gorm:"type:varchar(50);not null"`
-	SubCounty             string     `json:"sub_county,omitempty" gorm:"type:varchar(50);not null"`
 	Constituency          string     `json:"constituency,omitempty" gorm:"type:varchar(50);not null"`
-	Ward                  string     `json:"ward,omitempty" gorm:"type:varchar(50);not null"`
-	ReporteeFullName      string     `json:"reportee_full_name,omitempty" gorm:"type:varchar(50);not null"`
-	ReporteePhone         string     `json:"reportee_phone,omitempty" gorm:"type:varchar(15);not null"`
-	ReporteeEmail         string     `json:"reportee_email,omitempty" gorm:"type:varchar(50);not null"`
-	ReporteeCondition     string     `json:"reportee_condition,omitempty" gorm:"type:varchar(30);not null"`
-	ReporteeRelationship  string     `json:"reportee_relationship,omitempty" gorm:"type:varchar(30);not null"`
+	Ward                  string     `json:"ward,omitempty" gorm:"type:varchar(30);not null"`
+	Location              string     `json:"location,omitempty" gorm:"type:varchar(50);not null"`
+	LocationLongitude     float32    `json:"location_longitude,omitempty" gorm:"type:float(10);not null"`
+	LocationLatitude      float32    `json:"location_latitude,omitempty" gorm:"type:float(10);not null"`
+	LocationVerified      bool       `json:"location_verified" gorm:"type:tinyint(1);default:0"`
+	SuspectFullName       string     `gorm:"type:varchar(50);not null" json:"suspect_full_name,omitempty"`
+	SuspectPhone          string     `gorm:"type:varchar(15);not null" json:"suspect_phone,omitempty"`
+	SuspectEmail          string     `gorm:"type:varchar(50);not null" json:"suspect_email,omitempty"`
+	SuspectCondition      string     `gorm:"type:varchar(30);not null" json:"suspect_condition,omitempty"`
+	SuspectRelationship   string     `gorm:"type:varchar(30);not null" json:"suspect_relationship,omitempty"`
 	AdditionalInformation string     `json:"additional_information,omitempty" gorm:"type:text;not null"`
-	Attended              bool       `json:"attended" gorm:"type:tinyint(1);default:0"`
+	Attended              bool       `json:"attended,omitempty" gorm:"type:tinyint(1);default:0"`
 	CreatedAt             time.Time  `json:"-"`
 	DeletedAt             *time.Time `json:"-"`
 }
@@ -85,15 +88,13 @@ func (report *ReportedCase) validate() error {
 		err = errors.New("missing reporter email and phone")
 	case strings.TrimSpace(report.County) == "":
 		err = errors.New("missing report county")
-	case strings.TrimSpace(report.SubCounty) == "":
-		err = errors.New("missing report sub-county")
 	case strings.TrimSpace(report.Constituency) == "":
 		err = errors.New("missing report constituency")
 	case strings.TrimSpace(report.Ward) == "":
 		err = errors.New("missing report ward")
-	case strings.TrimSpace(report.ReporteeFullName) == "":
+	case strings.TrimSpace(report.SuspectFullName) == "":
 		err = errors.New("missing reportee fullname")
-	case strings.TrimSpace(report.ReporteeRelationship) == "":
+	case strings.TrimSpace(report.SuspectRelationship) == "":
 		err = errors.New("missing reportee relationship")
 	}
 	return err
@@ -132,7 +133,6 @@ func (reportAPI *reportAPI) ListReport(w http.ResponseWriter, r *http.Request, _
 	query := r.URL.Query()
 	// Get filters
 	counties := splitQuery(query.Get("counties"), ",")
-	subCounties := splitQuery(query.Get("sub_counties"), ",")
 	constituencies := splitQuery(query.Get("constituencies"), ",")
 	wards := splitQuery(query.Get("wards"), ",")
 
@@ -147,9 +147,6 @@ func (reportAPI *reportAPI) ListReport(w http.ResponseWriter, r *http.Request, _
 	db := func(db *gorm.DB) *gorm.DB {
 		if len(counties) != 0 {
 			db = db.Where("county IN (?)", counties)
-		}
-		if len(subCounties) != 0 {
-			db = db.Where("sub_county IN (?)", subCounties)
 		}
 		if len(constituencies) != 0 {
 			db = db.Where("constituencies IN (?)", constituencies)
@@ -219,6 +216,7 @@ func (reportAPI *reportAPI) AddReport(w http.ResponseWriter, r *http.Request, _ 
 	}
 
 	report.Attended = false
+	report.LocationVerified = false
 
 	// Update to database
 	err = reportAPI.sqlDB.Create(report).Error

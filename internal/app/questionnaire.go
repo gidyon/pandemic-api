@@ -73,7 +73,7 @@ func RegisterQuestionnaireAPI(router *httprouter.Router, opt *Options) {
 		handleError(err)
 	}
 
-	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
+	dur := time.Duration(int(30*time.Second) + rand.Intn(30))
 
 	go updateRevisionWorker(dur, func() {
 		// get new revision
@@ -125,8 +125,13 @@ type QuestionnaireData struct {
 			Value string `json:"value,omitempty"`
 		} `json:"answer_multi,omitempty"`
 		AnswersSelection []struct {
-			Text  string `json:"text,omitempty"`
-			Value string `json:"value,omitempty"`
+			Text            string `json:"text,omitempty"`
+			Value           string `json:"value,omitempty"`
+			Recommendations []struct {
+				Keyword string `json:"keyword,omitempty"`
+				Text    string `json:"text,omitempty"`
+				Type    string `json:"type,omitempty"`
+			} `json:"recommendations,omitempty"`
 		} `json:"answers_selection,omitempty"`
 		Multi bool `json:"multi,omitempty"`
 	} `json:"questionnaires,omitempty"`

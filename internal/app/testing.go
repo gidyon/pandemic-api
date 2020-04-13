@@ -11,14 +11,14 @@ import (
 	"time"
 )
 
-const suspectedCasesTable = "suspected_cases"
+const questionnaireCaseTable = "questionnaire_cases"
 
-type suspectCaseAPI struct {
+type questionnaireCase struct {
 	sqlDB *gorm.DB
 }
 
-// RegisterSuspectedCasesAPI registers http router for the suspect API
-func RegisterSuspectedCasesAPI(router *httprouter.Router, sqlDB *gorm.DB) {
+// RegisterQuestionnaireCasesAPI registers http router for the suspect API
+func RegisterQuestionnaireCasesAPI(router *httprouter.Router, sqlDB *gorm.DB) {
 	// Validation
 	var err error
 	switch {
@@ -29,72 +29,74 @@ func RegisterSuspectedCasesAPI(router *httprouter.Router, sqlDB *gorm.DB) {
 	}
 	handleError(err)
 
-	suspectCaseAPI := &suspectCaseAPI{
+	questionnaireCase := &questionnaireCase{
 		sqlDB: sqlDB,
 	}
 
 	// Auto migration
-	err = suspectCaseAPI.sqlDB.AutoMigrate(&SuspectedCase{}).Error
+	err = questionnaireCase.sqlDB.AutoMigrate(&QuestionnaireCase{}).Error
 	handleError(err)
 
-	router.GET("/api/cases/suspected/:caseId", suspectCaseAPI.GetSuspectedCase)
-	router.GET("/api/cases/suspected", suspectCaseAPI.ListSuspectedCases)
-	router.POST("/api/cases/suspected", suspectCaseAPI.AddSuspectedCase)
-	router.PATCH("/api/cases/suspected/:caseId/attend", suspectCaseAPI.MarkCaseAttended)
+	router.GET("/api/cases/questionnaire/:caseId", questionnaireCase.GetQuestionnaireCase)
+	router.GET("/api/cases/questionnaire", questionnaireCase.ListQuestionnaireCases)
+	router.POST("/api/cases/questionnaire", questionnaireCase.AddQuestionnaireCase)
+	router.PATCH("/api/cases/questionnaire/:caseId/attend", questionnaireCase.MarkCaseAttended)
 }
 
-// SuspectedCase represent a COVID19 suspected case
-type SuspectedCase struct {
+// QuestionnaireCase represent a COVID19 questionnaire case
+type QuestionnaireCase struct {
 	CaseID              string      `json:"case_id,omitempty" gorm:"primary_key;type:varchar(50);not null"`
 	SuspectFullName     string      `json:"suspect_full_name,omitempty" gorm:"type:varchar(50);not null"`
 	SuspectEmail        string      `json:"suspect_email,omitempty"  gorm:"type:varchar(50);not null"`
 	SuspectPhone        string      `json:"suspect_phone,omitempty" gorm:"index:query_index;type:varchar(15);not null"`
 	SuspectProfileThumb string      `json:"suspect_profile_thumb,omitempty" gorm:"type:varchar(256)"`
-	County              string      `json:"county,omitempty" gorm:"type:varchar(50);not null"`
-	SubCounty           string      `json:"sub_county,omitempty" gorm:"type:varchar(50);not null"`
-	Constituency        string      `json:"constituency,omitempty" gorm:"type:varchar(50);not null"`
-	Ward                string      `json:"ward,omitempty" gorm:"type:varchar(50);not null"`
+	SuspectAgeGroup     string      `json:"suspect_age_group,omitempty" gorm:"type:varchar(20);not null"`
+	Location            string      `json:"location,omitempty" gorm:"type:varchar(50);not null"`
+	LocationLongitude   float32     `json:"location_longitude,omitempty" gorm:"type:float(10);not null"`
+	LocationLatitude    float32     `json:"location_latitude,omitempty" gorm:"type:float(10);not null"`
+	LocationVerified    bool        `json:"location_verified" gorm:"type:tinyint(1);default:0"`
+	Trace               bool        `json:"trace" gorm:"type:tinyint(1);default:1"`
+	Attended            bool        `json:"attended" gorm:"type:tinyint(1);default:0"`
 	TestResults         interface{} `json:"test_results,omitempty" gorm:"-"`
 	Results             []byte      `json:"-" gorm:"type:json;not null"`
-	Attended            bool        `json:"attended,omitempty" gorm:"type:tinyint(1);default:0"`
 	CreatedAt           time.Time   `json:"-"`
 	DeletedAt           *time.Time  `json:"-"`
 }
 
 // BeforeCreate is a hook that is set before creating object
-func (*SuspectedCase) BeforeCreate(scope *gorm.Scope) error {
+func (*QuestionnaireCase) BeforeCreate(scope *gorm.Scope) error {
 	return scope.SetColumn("CaseID", uuid.New().String())
 }
 
 // TableName is the table name
-func (*SuspectedCase) TableName() string {
-	return suspectedCasesTable
+func (*QuestionnaireCase) TableName() string {
+	return questionnaireCaseTable
 }
 
-func (suspect *SuspectedCase) validate() error {
+func (suspect *QuestionnaireCase) validate() error {
 	var err error
 	switch {
 	case strings.TrimSpace(suspect.SuspectFullName) == "":
 		err = errors.New("missing suspect fullname")
 	case strings.TrimSpace(suspect.SuspectEmail) == "" && strings.TrimSpace(suspect.SuspectPhone) == "":
 		err = errors.New("missing suspect email and phone")
-	case strings.TrimSpace(suspect.County) == "":
-		err = errors.New("missing suspect county")
-	case strings.TrimSpace(suspect.SubCounty) == "":
-		err = errors.New("missing suspect sub-county")
-	case strings.TrimSpace(suspect.Constituency) == "":
-		err = errors.New("missing suspect constituency")
-	case strings.TrimSpace(suspect.Ward) == "":
-		err = errors.New("missing suspect ward")
+	case strings.TrimSpace(suspect.SuspectAgeGroup) == "":
+		err = errors.New("missing suspect age group")
+	case strings.TrimSpace(suspect.Location) == "":
+		err = errors.New("missing suspect location")
+	case suspect.LocationLatitude == 0:
+		err = errors.New("missing suspect latitude location")
+	case suspect.LocationLongitude == 0:
+		err = errors.New("missing suspect longitude location")
 	case suspect.TestResults == nil:
 		err = errors.New("missing suspect test results")
 	}
 	return err
 }
 
-func (sap *suspectCaseAPI) AddSuspectedCase(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (sap *questionnaireCase) AddQuestionnaireCase(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	// Marshaling
-	suspect := &SuspectedCase{}
+	suspect := &QuestionnaireCase{}
 	err := json.NewDecoder(r.Body).Decode(suspect)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -133,7 +135,7 @@ func (sap *suspectCaseAPI) AddSuspectedCase(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (sap *suspectCaseAPI) MarkCaseAttended(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func (sap *questionnaireCase) MarkCaseAttended(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	// Get suspect id
 	caseID := p.ByName("caseId")
 	if strings.TrimSpace(caseID) == "" {
@@ -142,7 +144,7 @@ func (sap *suspectCaseAPI) MarkCaseAttended(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Update database
-	err := sap.sqlDB.Table(suspectedCasesTable).Unscoped().Where("case_id=?", caseID).
+	err := sap.sqlDB.Table(questionnaireCaseTable).Unscoped().Where("case_id=?", caseID).
 		Update("attended", true).Error
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -157,7 +159,7 @@ func (sap *suspectCaseAPI) MarkCaseAttended(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (sap *suspectCaseAPI) ListSuspectedCases(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+func (sap *questionnaireCase) ListQuestionnaireCases(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	query := r.URL.Query()
 	// Get filters
 	counties := splitQuery(query.Get("counties"), ",")
@@ -190,7 +192,7 @@ func (sap *suspectCaseAPI) ListSuspectedCases(w http.ResponseWriter, r *http.Req
 	}(sap.sqlDB)
 
 	// Execute query
-	suspects := make([]*SuspectedCase, 0, ps)
+	suspects := make([]*QuestionnaireCase, 0, ps)
 	err = db.Find(&suspects).Error
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -205,21 +207,21 @@ func (sap *suspectCaseAPI) ListSuspectedCases(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (sap *suspectCaseAPI) GetSuspectedCase(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
+func (sap *questionnaireCase) GetQuestionnaireCase(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	// Get suspect id
 	caseID := p.ByName("caseId")
 	if strings.TrimSpace(caseID) == "" {
 		http.Error(w, "missing case id", http.StatusBadRequest)
 		return
 	}
-	suspect := &SuspectedCase{}
+	suspect := &QuestionnaireCase{}
 
 	// Get from database
 	err := sap.sqlDB.First(suspect, "case_id=?", caseID).Error
 	switch {
 	case err == nil:
 	case gorm.IsRecordNotFoundError(err):
-		http.Error(w, "suspected case not found", http.StatusBadRequest)
+		http.Error(w, "questionnaire case not found", http.StatusBadRequest)
 		return
 	default:
 		http.Error(w, err.Error(), http.StatusBadRequest)
