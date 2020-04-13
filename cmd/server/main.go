@@ -93,14 +93,14 @@ func main() {
 	app.RegisterQuestionnaireAPI(router, &app.Options{
 		RootDir:    filepath.Join(*rootDir, questionnairePrefix),
 		FilePrefix: questionnairePrefix,
-		Revision:   1,
+		Revision:   2,
 	})
 
 	// Report API
 	app.RegisterReportedCasesAPI(router, sqlDB)
 
 	// Suspected cases API
-	app.RegisterSuspectedCasesAPI(router, sqlDB)
+	app.RegisterQuestionnaireCasesAPI(router, sqlDB)
 
 	// Symptoms API
 	app.RegisterPandemicSymptomsAPI(router, &app.Options{
