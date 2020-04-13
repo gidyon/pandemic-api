@@ -32,67 +32,109 @@
 			]
 		},
 		{
-			"key": "age",
+			"key": "cases",
 			"question": "Have there been any case of COVID-19 in your area/county",
 			"answer_radio": {},
 			"answers_selection": [
 				{
 					"text": "More than 100 cases",
-					"value": "groupA"
+					"value": "groupA",
+					"recommendations": [
+						{"keyword": "social_gathering", "text": "Avoid any social gatherings", "type": "warning"},
+						{"keyword": "public_transport", "text": "Don't use congested public transport", "type": "warning"},
+						{"keyword": "mask", "text": "Wear mask while outside the house", "type": "info"}
+					]
 				},
 				{
 					"text": "Less than 100",
-					"value": "groupB"
+					"value": "groupB",
+					"recommendations": [
+						{"keyword": "social_gathering", "text": "Avoid any social gatherings", "type": "warning"},
+						{"keyword": "public_transport", "text": "Don't use congested public transport", "type": "warning"},
+						{"keyword": "mask", "text": "Wear facial mask while outside", "type": "info"}
+					]
 				},
 				{
 					"text": "Not Known",
-					"value": "groupC"
+					"value": "groupC",
+					"recommendations": [
+						{"keyword": "spreads", "text": "COVID-19 spreads quickly, take precaution!!", "type": "info"},
+						{"keyword": "stay_home", "text": "Stay at home", "type": "info"}
+					]
 				}
 			]
 		},
 		{
-			"key": "age",
+			"key": "contact",
 			"question": "Have you been in contact with a suspected/confirmed COVID-19 patient",
 			"answer_radio": {},
 			"answers_selection": [
 				{
 					"text": "Yes",
-					"value": "groupA"
+					"value": "groupA",
+					"recommendations": [
+						{"keyword": "medical_test", "text": "Immediate medical testing required! Call our hotline numbers", "type": "alert"}
+					]
 				},
 				{
 					"text": "No",
-					"value": "groupB"
+					"value": "groupB",
+					"recommendations": [
+						{"keyword": "social_distancing", "text": "Maintain social distancing", "type": "info"}
+					]
 				},
 				{
 					"text": "Not Sure",
-					"value": "groupC"
+					"value": "groupC",
+					"recommendations": [
+						{"keyword": "social_distancing", "text": "Maintain social distancing", "type": "info"}	
+					]
 				}
 			]
 		},
 		{
-			"key": "age",
+			"key": "mode",
 			"question": "How did the contact happened",
 			"answer_radio": {},
 			"answers_selection": [
 				{
 					"text": "Working together",
-					"value": "groupA"
+					"value": "groupA",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home if possible", "type": "warning"},
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk contracting", "type": "warning"}
+					]
 				},
 				{
 					"text": "Face to face contact within 1 meter",
-					"value": "groupB"
+					"value": "groupB",
+					"recommendations": [
+						{"keyword": "social_distancing", "text": "Maintain social distancing", "type": "info"},
+						{"keyword": "social_gathering", "text": "Avoid any social gatherings to curb spread", "type": "warning"}
+					]
 				},
 				{
 					"text": "Travelling together",
-					"value": "groupC"
+					"value": "groupC",
+					"recommendations": [
+						{"keyword": "public_transport", "text": "Don't use congested public transport", "type": "warning"},
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk of infection", "type": "info"}
+					]
 				},
 				{
 					"text": "Living in the same environment",
-					"value": "groupD"
+					"value": "groupD",
+					"recommendations": [
+						{"keyword": "report", "text": "Report any suspected case to the authority", "type": "info"},
+						{"keyword": "sharing", "text": "Avoid sharing items with COVID-19 patient to prevent infection", "type": "warning"}
+					]
 				},
 				{
 					"text": "Health care associated exposure",
-					"value": "groupE"
+					"value": "groupE",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home if possible", "type": "info"}
+					]
 				},
 				{
 					"text": "Not sure",
@@ -102,25 +144,38 @@
 			"multi": true
 		},
 		{
-			"key": "age",
+			"key": "symptoms",
 			"question": "Do you show any of the following symptoms",
 			"answer_radio": {},
 			"answers_selection": [
 				{
 					"text": "Difficulty in breathing",
-					"value": "groupA"
+					"value": "groupA",
+					"recommendations": [
+						{"keyword": "medical_test", "text": "Immediate medical testing required. Call our hotline numbers", "type": "alert"}
+					]
 				},
 				{
 					"text": "Cough",
-					"value": "groupB"
+					"value": "groupB",
+					"recommendations": [
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk of infection", "type": "info"},
+						{"keyword": "coughing", "text": "When coughing, use your elbow", "type": "warning"}
+					]
 				},
 				{
 					"text": "Tiredness and fatigue",
-					"value": "groupC"
+					"value": "groupC",
+					"recommendations": [
+						{"keyword": "medical_test", "text": "Call our hotline numbers for futher assistance", "type": "warning"}
+					]
 				},
 				{
 					"text": "Fever",
-					"value": "groupD"
+					"value": "groupD",
+					"recommendations": [
+						{"keyword": "medical_test", "text": "Call our hotline numbers for futher assistance", "type": "info"}
+					]
 				}
 			],
 			"multi": true
@@ -132,27 +187,56 @@
 			"answers_selection": [
 				{
 					"text": "Diabetes",
-					"value": "groupA"
+					"value": "groupA",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"}
+					]
 				},
 				{
 					"text": "Asthmatic",
-					"value": "groupB"
+					"value": "groupB",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"},
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk of infection", "type": "info"}
+					]
 				},
 				{
 					"text": "Cancer",
-					"value": "groupC"
+					"value": "groupC",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"},
+						{"keyword": "mask", "text": "Call our hotline for further help", "type": "info"}
+					]
 				},
 				{
 					"text": "Hyper Tension (Blood Pressure)",
-					"value": "groupD"
+					"value": "groupD",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"},
+						{"keyword": "mask", "text": "Call our hotline for further help", "type": "info"}
+					]
 				},
 				{
 					"text": "Tuberculosis",
-					"value": "groupE"
+					"value": "groupE",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"},
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk of infection", "type": "info"}
+					]
 				},
 				{
 					"text": "Respiratory illness",
-					"value": "groupF"
+					"value": "groupF",
+					"recommendations": [
+						{"keyword": "stay_home", "text": "Stay at home possible", "type": "info"},
+						{"keyword": "mask", "text": "Always take precautions", "type": "info"},
+						{"keyword": "mask", "text": "Wear mask while outside the house to minimize risk of infection", "type": "info"}
+					]
 				}
 			],
 			"multi": true
