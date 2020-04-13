@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: fightcovid19
-        image: gidyon/fightcovid19-api:v0.3
+        image: gidyon/fightcovid19-api:v0.33
         args: ["--env"]
         imagePullPolicy: Always
         ports:
