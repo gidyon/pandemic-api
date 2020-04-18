@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-swagger/options/annotations.proto";
+
+// Represent geographic location
+message Location {
+    float longitude = 1;
+    float latitude = 2;
+    int64 timestamp = 3;
+    float accuracy = 4;
+    float altitude = 5;
+    float speed = 6;
+    float speed_accuracy = 7;
+}
+
+// GetActionsRequest is request to get kind of action to be performed by client
+message GetActionsRequest {
+    string user_id = 1;
+}
+
+// TimeFilter if filter for time queries
+message TimeFilter {
+    int64 start_timestamp = 1;
+    int64 end_timestamp = 2;
+}
+
+// GetActionsResponse is response containing the action to be performed
+message GetActionsResponse {
+    oneof action {
+        TimeFilter send_locations = 1;
+        TimeFilter both = 2;
+        string get_updates = 3;
+    }
+}
+
+// LocationCase is a pandemic case for a location
+message LocationCase {
+    string user_id = 1;
+    string status_id = 2;
+    Location location = 3;
+}
+
+// LocationCases is collection of locatuon cases
+message LocationCases {
+    repeated LocationCase cases = 2;
+}
+
+// AddLocationCaseRequest is request to add location case
+message AddLocationCaseRequest {
+    LocationCase case = 1;
+}
+
+// AddLocationCasesRequest is request to add multiple location cases
+message AddLocationCasesRequest {
+    repeated LocationCase cases = 2;
+}
+
+// SendLocationsRequest is request containing list of locations sent by user
+message SendLocationsRequest {
+    string user_id = 1;
+    repeated Location locations = 2;
+}
+
+// UpdateUserStatusRequest is request to update user status
+message UpdateUserStatusRequest {
+    string user_id = 1;
+    string status = 2;
+}
+
+// AddUserRequest is request to add user
+message AddUserRequest {
+    string phone_number = 1;
+    string status_id = 2;
+}
+
+// Manages user locations and activities
+service LocationTracingAPI {
+    // Fetches list of actions to be performed by user
+    rpc GetActions (GetActionsRequest) returns (GetActionsResponse);
+    // Get cases for a location
+    rpc GetLocationCases (Location) returns (LocationCases);
+    // Add one case for a location
+    rpc AddLocationCase (AddLocationCaseRequest) returns (google.protobuf.Empty);
+    // Add many cases for a location
+    rpc AddLocationCases (AddLocationCasesRequest) returns (google.protobuf.Empty);
+    // Sends user locations
+    rpc SendLocations (SendLocationsRequest) returns (google.protobuf.Empty);
+    // Updates user status
+    rpc UpdateUserStatus (UpdateUserStatusRequest) returns (google.protobuf.Empty);
+    // Add a new user
+    rpc AddUser (AddUserRequest) returns (google.protobuf.Empty);
+}
