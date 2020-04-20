@@ -4,7 +4,7 @@ option go_package="location";
 
 import "google/protobuf/empty.proto";
 
-// Represent geographic location
+// Represents a geographic location
 message Location {
     float longitude = 1;
     float latitude = 2;
@@ -13,6 +13,8 @@ message Location {
     float altitude = 5;
     float speed = 6;
     float speed_accuracy = 7;
+    string geo_fence_id = 8;
+    string placemark = 9;
 }
 
 // GetActionsRequest is request to get kind of action to be performed by client
@@ -20,18 +22,31 @@ message GetActionsRequest {
     string user_id = 1;
 }
 
-// TimeFilter if filter for time queries
-message TimeFilter {
-    int64 start_timestamp = 1;
-    int64 end_timestamp = 2;
+// GetUpdatesRequest is request to get recent updates
+message GetUpdatesRequest {
+    string user_id = 1;
+    int64 start_index = 2;
+    int64 count = 3;
+    int64 start_timestamp_sec = 4;
 }
 
+// TimeFilter if filter for time queries
+message TimeFilter {
+    int64 start_timestamp_sec = 1;
+    int64 end_timestamp_sec = 2;
+}
+
+message GetUpdatesPayload {
+    int64 count = 1;
+    int64 start_index = 2;
+    int64 start_timestamp_sec = 3;
+}
 // GetActionsResponse is response containing the action to be performed
 message GetActionsResponse {
     oneof action {
         TimeFilter send_locations = 1;
         TimeFilter both = 2;
-        string get_updates = 3;
+        GetUpdatesPayload get_updates = 3;
     }
 }
 
@@ -39,21 +54,13 @@ message GetActionsResponse {
 message LocationCase {
     string user_id = 1;
     string status_id = 2;
-    Location location = 3;
+    int64 start_timestamp = 3;
+    int64 end_timestamp = 4;
+    Location location = 5;
 }
 
-// LocationCases is collection of locatuon cases
+// LocationCases is collection of location cases
 message LocationCases {
-    repeated LocationCase cases = 2;
-}
-
-// AddLocationCaseRequest is request to add location case
-message AddLocationCaseRequest {
-    LocationCase case = 1;
-}
-
-// AddLocationCasesRequest is request to add multiple location cases
-message AddLocationCasesRequest {
     repeated LocationCase cases = 2;
 }
 
@@ -81,10 +88,12 @@ service LocationTracingAPI {
     rpc GetActions (GetActionsRequest) returns (GetActionsResponse);
     // Get cases for a location
     rpc GetLocationCases (Location) returns (LocationCases);
-    // Add one case for a location
-    rpc AddLocationCase (AddLocationCaseRequest) returns (google.protobuf.Empty);
+    // Get updates for a user
+    rpc GetUpdates (GetUpdatesRequest) returns (LocationCases);
+    // Add one case for a locations
+    rpc AddLocationCase (LocationCase) returns (google.protobuf.Empty);
     // Add many cases for a location
-    rpc AddLocationCases (AddLocationCasesRequest) returns (google.protobuf.Empty);
+    rpc AddLocationCases (LocationCases) returns (google.protobuf.Empty);
     // Sends user locations
     rpc SendLocations (SendLocationsRequest) returns (google.protobuf.Empty);
     // Updates user status
