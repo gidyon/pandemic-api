@@ -1,8 +1,11 @@
 syntax = "proto3";
 
+package covitrace;
+
 option go_package="location";
 
 import "google/protobuf/empty.proto";
+import "google/longrunning/operations.proto";
 
 // Represents a geographic location
 message Location {
@@ -13,91 +16,125 @@ message Location {
     float altitude = 5;
     float speed = 6;
     float speed_accuracy = 7;
-    string geo_fence_id = 8;
-    string placemark = 9;
+    string placemark = 8;
+    string geo_fence_id = 9;
+    string time_id = 11;
 }
 
-// GetActionsRequest is request to get kind of action to be performed by client
-message GetActionsRequest {
+// SendLocationRequest is request to send a single location
+message SendLocationRequest {
     string user_id = 1;
+    Status status_id = 2;
+    Location location = 3;
 }
 
-// GetUpdatesRequest is request to get recent updates
-message GetUpdatesRequest {
-    string user_id = 1;
-    int64 start_index = 2;
-    int64 count = 3;
-    int64 start_timestamp_sec = 4;
-}
-
-// TimeFilter if filter for time queries
-message TimeFilter {
-    int64 start_timestamp_sec = 1;
-    int64 end_timestamp_sec = 2;
-}
-
-message GetUpdatesPayload {
-    int64 count = 1;
-    int64 start_index = 2;
-    int64 start_timestamp_sec = 3;
-}
-// GetActionsResponse is response containing the action to be performed
-message GetActionsResponse {
-    oneof action {
-        TimeFilter send_locations = 1;
-        TimeFilter both = 2;
-        GetUpdatesPayload get_updates = 3;
-    }
-}
-
-// LocationCase is a pandemic case for a location
-message LocationCase {
-    string user_id = 1;
-    string status_id = 2;
-    int64 start_timestamp = 3;
-    int64 end_timestamp = 4;
-    Location location = 5;
-}
-
-// LocationCases is collection of location cases
-message LocationCases {
-    repeated LocationCase cases = 2;
-}
-
-// SendLocationsRequest is request containing list of locations sent by user
+// SendLocationsRequest is request to send a collection of location
 message SendLocationsRequest {
     string user_id = 1;
-    repeated Location locations = 2;
+    Status status_id = 2;
+    repeated Location locations = 3;
+}
+
+// Status is user status
+enum Status {
+    UNKNOWN = 0;
+    POSITIVE = 1;
+    NEGATIVE = 2;
+    RECOVERED = 3;
 }
 
 // UpdateUserStatusRequest is request to update user status
 message UpdateUserStatusRequest {
-    string user_id = 1;
-    string status = 2;
+    string phone_number = 1;
+    Status status = 2;
 }
 
-// AddUserRequest is request to add user
+// AddUserRequest is request to add a user
 message AddUserRequest {
     string phone_number = 1;
-    string status_id = 2;
+    Status status_id = 2;
+    string full_name = 3;
+    string device_token = 4;
+    string county = 5;
 }
 
 // Manages user locations and activities
 service LocationTracingAPI {
-    // Fetches list of actions to be performed by user
-    rpc GetActions (GetActionsRequest) returns (GetActionsResponse);
-    // Get cases for a location
-    rpc GetLocationCases (Location) returns (LocationCases);
-    // Get updates for a user
-    rpc GetUpdates (GetUpdatesRequest) returns (LocationCases);
-    // Add one case for a locations
-    rpc AddLocationCase (LocationCase) returns (google.protobuf.Empty);
-    // Add many cases for a location
-    rpc AddLocationCases (LocationCases) returns (google.protobuf.Empty);
+    // Send a single location to the server
+    rpc SendLocation (SendLocationRequest) returns (google.protobuf.Empty);
     // Sends user locations
-    rpc SendLocations (SendLocationsRequest) returns (google.protobuf.Empty);
+    rpc SendLocations (stream SendLocationRequest) returns (google.protobuf.Empty);
     // Updates user status
     rpc UpdateUserStatus (UpdateUserStatusRequest) returns (google.protobuf.Empty);
     // Add a new user
     rpc AddUser (AddUserRequest) returns (google.protobuf.Empty);
+}
+
+// TraceUserLocationsRequest is request to trace a user locations
+message TraceUserLocationsRequest {
+    string phone_number = 1;
+    string since_date = 2;
+}
+
+// Traces user previous locations
+service ContactTracing {
+    rpc TraceUserLocations (TraceUserLocationsRequest) returns (google.longrunning.Operation);
+}
+
+// ContactData contains locational contacts infomation
+message ContactData {
+    int32 count = 1;
+    string user_phone = 2;
+    string full_name = 3;
+    string patient_phone = 4;
+    string device_token = 5;
+    repeated ContactPoint contact_points = 6;
+}
+
+// BroadCastMessageResponse is response after a message has been broadcasted containing the broadcast id
+message BroadCastMessageResponse {
+    string broadcast_message_id = 1;
+}
+
+// ContactPoint is a geographic contact point at a particular time
+message ContactPoint {
+    string geo_fence_id = 1;
+    string time_id = 2;
+}
+
+// BroadCastMessageFilter is type filter for broadcast messages
+enum BroadCastMessageFilter {
+    ALL = 0;
+    BY_COUNTY = 1;
+    POSITIVES = 2;
+    NEGATIVES = 3;
+}
+
+// BroadCastMessageRequest is request to broadcast message to users
+message BroadCastMessageRequest {
+    string title = 1;
+    string message = 2;
+    repeated BroadCastMessageFilter filters = 3;
+    repeated string topics = 4;
+    map<string, string> payload = 5;
+}
+
+// SendMessageRequest is request to send message to a user
+message SendMessageRequest {
+    string user_phone = 1;
+    string title = 2;
+    string message = 3;
+    map<string, string> payload = 4;
+}
+
+// SendMessageResponse is response after sending message contains message id
+message SendMessageResponse {
+    string message_id = 1;
+}
+
+// Sends messages to devices and destinations
+service Messaging {
+    rpc AlertContacts (stream ContactData) returns (google.protobuf.Empty);
+    rpc BroadCastMessage (BroadCastMessageRequest) returns (BroadCastMessageResponse);
+    rpc SendMessage (SendMessageRequest) returns (SendMessageResponse);
 }
