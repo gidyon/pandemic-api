@@ -1,6 +1,6 @@
-PROJECT_NAME=fightcovid19
+PROJECT_NAME=pandemic-api
 SERVICE_OUT := server.bin
-PKG := github.com/gidyon/fightcovid19
+PKG := github.com/gidyon/pandemic-api
 SERVICE_PKG_BUILD := ${PKG}/cmd/server
 API_IN_PATH := api/proto
 API_OUT_PATH := pkg/api
@@ -15,13 +15,13 @@ compile: ## Build the binary file for server
 	go build -i -v -o $(SERVICE_OUT) $(SERVICE_PKG_BUILD)
 
 run: ## run compiled binary
-	./fightcovid19
+	./$(SERVICE_OUT)
 
 run_app: ## go run server
 	go run cmd/server/*.go
 
 run_app_online:
-	go build -o fightcovid19 ${PKG}/cmd/server && ./fightcovid19 --mysql-host=ec2-3-135-225-228.us-east-2.compute.amazonaws.com --mysql-port=30800 --mysql-user=root --mysql-schema=fightcovid19_staging --mysql-password=fightcovid19@2020
+	go build -i -v -o $(SERVICE_OUT) $(SERVICE_PKG_BUILD)  && ./$(SERVICE_OUT) --config-file=configs/dev.yml
 
 docker_build: ## Create a docker image for the service
 ifdef tag
@@ -52,6 +52,6 @@ help: ## Display this help screen
 
 # ============================================================================== 
 proto_compile_location:
-	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/location location.proto &&\
-	protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/location location.proto
-	protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) location.proto
+	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/location locationv2.proto
+	# protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/location locationv2.proto
+	# protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) locationv2.proto
