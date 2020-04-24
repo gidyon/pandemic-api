@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/jinzhu/gorm"
-	"github.com/julienschmidt/httprouter"
 	"math/rand"
 	"net/http"
 	"os"
@@ -15,6 +12,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
+	"github.com/julienschmidt/httprouter"
 )
 
 const questionnaireGroup = "QUESTIONNAIRE"
@@ -73,7 +74,7 @@ func RegisterQuestionnaireAPI(router *httprouter.Router, opt *Options) {
 		handleError(err)
 	}
 
-	dur := time.Duration(int(30*time.Second) + rand.Intn(30))
+	dur := time.Duration(int(30*time.Minute) + rand.Intn(30))
 
 	go updateRevisionWorker(dur, func() {
 		// get new revision

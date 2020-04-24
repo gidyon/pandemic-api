@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
-	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jinzhu/gorm"
+	"github.com/julienschmidt/httprouter"
 )
 
 const confirmedCasesTable = "confirmed_cases"

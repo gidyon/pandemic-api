@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/Sirupsen/logrus"
-	"github.com/gidyon/fightcovid19/internal/auth"
+	"github.com/gidyon/pandemic-api/internal/auth"
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
 	"golang.org/x/crypto/bcrypt"
-	"net/http"
-	"strings"
-	"time"
 )
 
 const accountsTable = "accounts"
