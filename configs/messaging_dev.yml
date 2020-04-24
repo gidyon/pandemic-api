@@ -1,0 +1,32 @@
+serviceVersion: v1/beta
+serviceName: messaging_app
+servicePort: 5600
+logging:
+  level: -1
+  timeFormat: 2006-01-02T15:04:05Z07:00
+security:
+  tlsCert: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
+  tlsKey: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
+  serverName: localhost
+databases:
+  sqlDatabase:
+    required: true
+    address: 192.168.100.10:3306
+    host: 192.168.100.10
+    port: 3306
+    user: root
+    schema: fightcovid19
+    password: hakty11
+    metadata:
+      name: mysql
+      dialect: mysql
+      orm: gorm
+  redisDatabase:
+    required: false
+    address: 192.168.100.10:6379
+    host: 192.168.100.10
+    port: 6379
+    metadata:
+      name: redis
+      useRediSearch: true
+
