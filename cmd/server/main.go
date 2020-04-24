@@ -1,120 +1,43 @@
 package main
 
 import (
-	"flag"
-	"github.com/Sirupsen/logrus"
-	"github.com/gidyon/fightcovid19/internal/app"
-	"github.com/gidyon/fightcovid19/pkg/middleware"
-	"github.com/gidyon/micros/pkg/conn"
-	"github.com/julienschmidt/httprouter"
-	"net/http"
-	"os"
-	"path/filepath"
+	"context"
 	"strings"
-)
 
-var (
-	rootDir       = flag.String("root", "api/json", "Root directory")
-	port          = flag.String("port", ":9090", "Server port")
-	certFile      = flag.String("cert", "certs/localhost/cert.pem", "TLS certificate file")
-	keyFile       = flag.String("key", "certs/localhost/key.pem", "TLS key file")
-	mysqlHost     = flag.String("mysql-host", "localhost", "Mysql host")
-	mysqlPort     = flag.String("mysql-port", "3306", "Mysql host")
-	mysqUser      = flag.String("mysql-user", "root", "Mysql user")
-	mysqlPassword = flag.String("mysql-password", "hakty11", "Mysql password")
-	mysqlSchema   = flag.String("mysql-schema", "fightcovid19", "Mysql schema")
-	env           = flag.Bool("env", false, "Assigns higher priority to env variables")
+	location_service "github.com/gidyon/pandemic-api/internal/services/location"
+
+	"github.com/gidyon/pandemic-api/pkg/api/location"
+
+	"github.com/gidyon/config"
+	"github.com/gidyon/micros"
+
+	"github.com/Sirupsen/logrus"
 )
 
 func main() {
-	flag.Parse()
+	cfg, err := config.New()
+	handleErr(err)
 
-	const (
-		contactsPreffix     = "contacts"
-		faqPreffix          = "faqs"
-		quarantinePreffix   = "quarantine"
-		questionnairePrefix = "questionnaire"
-		symptomsPreffix     = "symptoms"
-	)
+	ctx := context.Background()
 
-	*rootDir = setIfempty(*rootDir, os.Getenv("ROOT_DIR"), *env)
-	*port = setIfempty(*port, os.Getenv("PORT"), *env)
-	*certFile = setIfempty(*certFile, os.Getenv("TLS_CERT_FILE"), *env)
-	*keyFile = setIfempty(*keyFile, os.Getenv("TLS_KEY_FILE"), *env)
-	*mysqlHost = setIfempty(*mysqlHost, os.Getenv("MYSQL_HOST"), *env)
-	*mysqlPort = setIfempty(*mysqlPort, os.Getenv("MYSQL_PORT"), *env)
-	*mysqUser = setIfempty(*mysqUser, os.Getenv("MYSQL_USER"), *env)
-	*mysqlPassword = setIfempty(*mysqlPassword, os.Getenv("MYSQL_PASSWORD"), *env)
-	*mysqlSchema = setIfempty(*mysqlSchema, os.Getenv("MYSQL_SCHEMA"), *env)
+	app, err := micros.NewService(ctx, cfg, nil)
+	handleErr(err)
 
-	sqlDB, err := conn.ToSQLDBUsingORM(&conn.DBOptions{
-		Dialect:  "mysql",
-		Host:     *mysqlHost,
-		Port:     *mysqlPort,
-		User:     *mysqUser,
-		Password: *mysqlPassword,
-		Schema:   *mysqlSchema,
+	registerHandlers(app)
+
+	// Create location tracing instance
+	locationAPI, err := location_service.NewLocationTracing(ctx, &location_service.Options{
+		LogsDB:   app.GormDB(),
+		EventsDB: app.RedisClient(),
 	})
 	handleErr(err)
 
-	router := httprouter.New()
+	// Initialize grpc server
+	handleErr(app.InitGRPC(ctx))
 
-	// Start revisions manager
-	app.StartRevisionManager(sqlDB)
+	location.RegisterLocationTracingAPIServer(app.GRPCServer(), locationAPI)
 
-	// Account API
-	app.RegisterAccountAPI(router, sqlDB)
-
-	// Confirmed cases API
-	app.RegisterConfirmedCasesAPI(router, sqlDB)
-
-	// Contacts API
-	app.RegisterContactAPI(router, &app.Options{
-		RootDir:    filepath.Join(*rootDir, contactsPreffix),
-		FilePrefix: contactsPreffix,
-		Revision:   1,
-	})
-
-	// FAQ API
-	app.RegisterFAQAPI(router, &app.Options{
-		RootDir:    filepath.Join(*rootDir, faqPreffix),
-		FilePrefix: faqPreffix,
-		Revision:   1,
-	})
-
-	// SelfQuarantine API
-	app.RegisterQuarantineMeasuresAPI(router, &app.Options{
-		RootDir:    filepath.Join(*rootDir, quarantinePreffix),
-		FilePrefix: quarantinePreffix,
-		Revision:   1,
-	})
-
-	// Questionnaire API
-	app.RegisterQuestionnaireAPI(router, &app.Options{
-		RootDir:    filepath.Join(*rootDir, questionnairePrefix),
-		FilePrefix: questionnairePrefix,
-		Revision:   2,
-	})
-
-	// Report API
-	app.RegisterReportedCasesAPI(router, sqlDB)
-
-	// Suspected cases API
-	app.RegisterQuestionnaireCasesAPI(router, sqlDB)
-
-	// Symptoms API
-	app.RegisterPandemicSymptomsAPI(router, &app.Options{
-		RootDir:    filepath.Join(*rootDir, symptomsPreffix),
-		FilePrefix: symptomsPreffix,
-		Revision:   1,
-	})
-
-	// Global middlewares
-	handler := middleware.Apply(router, middleware.SupportCORS, middleware.SetJSONCtype)
-
-	parsedPort := ":" + strings.TrimPrefix(*port, ":")
-	logrus.Infof("server started on port %s\n", parsedPort)
-	logrus.Fatalln(http.ListenAndServeTLS(parsedPort, *certFile, *keyFile, handler))
+	handleErr(app.Run(ctx))
 }
 
 func setIfempty(val1, val2 string, swap ...bool) string {
