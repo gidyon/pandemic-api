@@ -1,0 +1,62 @@
+apiVersion: 1.0
+port: 443
+
+security:
+  tlsCert: /app/secrets/keys/cert
+  tlsKey: /app/secrets/keys/key
+  serverName: app
+  insecure: true
+  
+handlers:
+  staticHandlers:
+  - name: Documentation
+    rootDir: ./
+    indexFile: static/dist/index.html
+    fallbackIndex: false
+    pathPrefix: /api/v1/documentation/
+    allowedDirs:
+    - api/swagger
+    - static/dist
+  - name: StaticFiles
+    rootDir: dist/
+    indexFile: index.html
+    fallbackIndex: false
+    pathPrefix: /app/
+    # pushFiles:
+    # - path: /app/
+    #   files:
+    #   - abc
+
+services:
+- name: location
+  address: https://location:443
+  pathPrefixes: 
+  - /api/v1/locations/
+  - /api/v1/users/
+  security:
+    tlsCert: /app/secrets/keys/location/cert
+    server: location
+
+- name: messaging
+  address: https://messaging:443
+  pathPrefixes:
+  - /api/v1/messaging/
+  security:
+    tlsCert: /app/secrets/keys/messaging/cert
+    server: messaging
+
+- name: tracing
+  address: https://tracing:443
+  pathPrefixes: 
+  - /api/v1/trace/
+  security:
+    tlsCert: /app/secrets/keys/tracing/cert
+    server: tracing
+
+- name: restful
+  address: https://restful:443
+  pathPrefixes: 
+  - /rest/v1/
+  security:
+    tlsCert: /app/secrets/keys/restful/cert
+    server: restful
