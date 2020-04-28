@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/gidyon/micros/utils/healthcheck"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -25,10 +26,24 @@ func main() {
 	app, err := micros.NewService(ctx, cfg, nil)
 	handleErr(err)
 
+	// Readiness health check
+	app.AddEndpoint("/api/v1/trace/readyq/", healthcheck.RegisterProbe(&healthcheck.ProbeOptions{
+		Service:      app,
+		Type:         healthcheck.ProbeReadiness,
+		AutoMigrator: func() error { return nil },
+	}))
+
+	// Liveness health check
+	app.AddEndpoint("/api/v1/trace/liveq/", healthcheck.RegisterProbe(&healthcheck.ProbeOptions{
+		Service:      app,
+		Type:         healthcheck.ProbeLiveNess,
+		AutoMigrator: func() error { return nil },
+	}))
+
+	// Connect to external service
 	dopts := []grpc.DialOption{
 		grpc.WithBlock(),
 	}
-	// Connect to external service
 	cc, err := app.DialExternalService(ctx, "messaging", dopts)
 	handleErr(err)
 
@@ -49,6 +64,7 @@ func main() {
 	handleErr(app.InitGRPC(ctx))
 
 	location.RegisterContactTracingServer(app.GRPCServer(), tracingAPI)
+	handleErr(location.RegisterContactTracingHandlerServer(ctx, app.RuntimeMux(), tracingAPI))
 
 	handleErr(app.Run(ctx))
 }
