@@ -6,6 +6,8 @@ option go_package="location";
 
 import "google/protobuf/empty.proto";
 import "google/longrunning/operations.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-swagger/options/annotations.proto";
 
 // Represents a geographic location
 message Location {
@@ -61,13 +63,44 @@ message AddUserRequest {
 // Manages user locations and activities
 service LocationTracingAPI {
     // Send a single location to the server
-    rpc SendLocation (SendLocationRequest) returns (google.protobuf.Empty);
+    rpc SendLocation (SendLocationRequest) returns (google.protobuf.Empty) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/locations/send"
+            body: "*"
+        };
+    };
+
     // Sends user locations
-    rpc SendLocations (stream SendLocationRequest) returns (google.protobuf.Empty);
+    rpc SendLocations (stream SendLocationRequest) returns (google.protobuf.Empty) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/locations/send/bulk"
+            body: "*"
+        };
+    };
+
     // Updates user status
-    rpc UpdateUserStatus (UpdateUserStatusRequest) returns (google.protobuf.Empty);
+    rpc UpdateUserStatus (UpdateUserStatusRequest) returns (google.protobuf.Empty) {
+        // Maps to HTTP PATCH
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            patch: "/api/v1/users/{phone_number}/status"
+            body: "*"
+        };
+    };
+
     // Add a new user
-    rpc AddUser (AddUserRequest) returns (google.protobuf.Empty);
+    rpc AddUser (AddUserRequest) returns (google.protobuf.Empty) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/users/add"
+            body: "*"
+        };
+    };
 }
 
 // TraceUserLocationsRequest is request to trace a user locations
@@ -78,7 +111,15 @@ message TraceUserLocationsRequest {
 
 // Traces user previous locations
 service ContactTracing {
-    rpc TraceUserLocations (TraceUserLocationsRequest) returns (google.longrunning.Operation);
+    // Traces user locations and matching corresponding contact points
+    rpc TraceUserLocations (TraceUserLocationsRequest) returns (google.longrunning.Operation) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/trace/locations"
+            body: "*"
+        };
+    };
 }
 
 // ContactData contains locational contacts infomation
@@ -114,17 +155,30 @@ enum BroadCastMessageFilter {
 message BroadCastMessageRequest {
     string title = 1;
     string message = 2;
-    repeated BroadCastMessageFilter filters = 3;
-    repeated string topics = 4;
-    map<string, string> payload = 5;
+    MessageType type = 3;
+    repeated BroadCastMessageFilter filters = 4;
+    repeated string topics = 5;
+    map<string, string> payload = 6;
 }
 
-// SendMessageRequest is request to send message to a user
-message SendMessageRequest {
-    string user_phone = 1;
-    string title = 2;
-    string message = 3;
-    map<string, string> payload = 4;
+// MessageType is category of a message
+enum MessageType {
+    ANY = 0;
+    ALERT = 1;
+    WARNING = 2;
+    INFO = 3;
+}
+
+// Message is a message payload
+message Message {
+    string message_id = 1;
+    string user_phone = 2;
+    string title = 3;
+    string notification = 4;
+    string date_time = 5;
+    bool sent = 6;
+    MessageType type = 7;
+    map<string, string> data = 8;
 }
 
 // SendMessageResponse is response after sending message contains message id
@@ -132,9 +186,56 @@ message SendMessageResponse {
     string message_id = 1;
 }
 
+// GetMessagesRequest is request to get user messages
+message GetMessagesRequest {
+    string phone_number = 1;
+    int32 page_token = 2;
+    int32 page_size = 3;
+}
+
+// Messages is a collection of user messages
+message Messages {
+    repeated Message messages = 1;
+}
+
 // Sends messages to devices and destinations
 service Messaging {
-    rpc AlertContacts (stream ContactData) returns (google.protobuf.Empty);
-    rpc BroadCastMessage (BroadCastMessageRequest) returns (BroadCastMessageResponse);
-    rpc SendMessage (SendMessageRequest) returns (SendMessageResponse);
+    // Alerts on possible contact points with a positive patient
+    rpc AlertContacts (stream ContactData) returns (google.protobuf.Empty) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/alert"
+            body: "*"
+        };
+    };
+
+    // Broadcasts a message
+    rpc BroadCastMessage (BroadCastMessageRequest) returns (BroadCastMessageResponse) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/broadcast"
+            body: "*"
+        };
+    };
+
+    // Sends message to a single destination
+    rpc SendMessage (Message) returns (SendMessageResponse) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/send"
+            body: "*"
+        };
+    };
+
+    // Retrieves user messages
+    rpc GetMessages (GetMessagesRequest) returns (Messages) {
+        // Maps to HTTP GET
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            get: "/api/v1/messaging/messages/{phone_number}"
+        };
+    };
 }
