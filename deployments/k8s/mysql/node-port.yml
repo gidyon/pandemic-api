@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-np
+  name: mysqldb
   labels:
     app: fightcovid19
 spec:

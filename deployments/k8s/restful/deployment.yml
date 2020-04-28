@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pandemic-restful
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pandemic-restful
+  template:
+    metadata:
+      labels:
+        app: pandemic-restful
+    spec:
+      containers:
+      - name: pandemic-restful
+        image: gidyon/pandemic-api-restful:v0.21
+        args: ["--config-file", "/app/configs/config.yml"]
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 443
+          name: https
+          protocol: TCP
+        env:
+        - name: ROOT_DIR
+          value: json
+        volumeMounts:
+          - name: app-tls
+            mountPath: /app/secrets/keys/
+            readOnly: true
+          - name: app-config
+            mountPath: /app/configs/
+            readOnly: true
+          - name: mysql-creds
+            mountPath: /app/secrets/mysql/
+            readOnly: true
+      volumes:
+      - name: app-tls
+        secret:
+          secretName: restful-tls-v1
+      - name: app-config
+        configMap:
+          name: restful-v1
+      - name: mysql-creds
+        secret:
+          secretName: mysql-credentials
+
+---
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "pandemic-restful-hpa"
+  labels:
+    app: "pandemic-restful"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "pandemic-restful"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: restful
+  labels:
+    app: pandemic-restful
+spec:
+  clusterIP: None
+  selector:
+    app: pandemic-restful
+  ports:
+  - port: 443
+    name: https
+    targetPort: https
+    protocol: TCP
+  - port: 80
+    name: http
+    targetPort: https
+    protocol: TCP

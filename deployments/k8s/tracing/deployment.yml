@@ -1,29 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pandemic-api-gateway
+  name: pandemic-api-tracing
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pandemic-api-gateway
+      app: pandemic-api-tracing
   template:
     metadata:
       labels:
-        app: pandemic-api-gateway
+        app: pandemic-api-tracing
     spec:
       containers:
-      - name: pandemic-api-gateway
-        image: gidyon/pandemic-api:v0.3
-        args: ["--services-file", "/app/configs/gateway.yml", "--port", "443"]
+      - name: pandemic-api-tracing
+        image: gidyon/pandemic-api-tracing:v0.4
+        args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:
-        - containerPort: 443
+        - containerPort: 5600
           name: https
           protocol: TCP
         readinessProbe: # Checks that the container is started
           httpGet:
-            path: /readyq
+            path: /api/v1/trace/readyq/
             scheme: HTTPS
             port: 443
           initialDelaySeconds: 5
@@ -32,7 +32,7 @@ spec:
           failureThreshold: 3
         livenessProbe: # Checks that the container is running
           httpGet:
-            path: /liveq
+            path: /api/v1/trace/liveq/
             scheme: HTTPS
             port: 443
           initialDelaySeconds: 5
@@ -43,58 +43,40 @@ spec:
           - name: app-tls
             mountPath: /app/secrets/keys/
             readOnly: true
-          - name: gateway-config
+          - name: messaging-tls
+            mountPath: /app/secrets/keys/messaging
+            readOnly: true
+          - name: app-config
             mountPath: /app/configs/
             readOnly: true
           - name: mysql-creds
             mountPath: /app/secrets/mysql/
             readOnly: true
-          - name: messaging-tls
-            mountPath: /app/secrets/keys/messaging
-            readOnly: true
-          - name: tracing-tls
-            mountPath: /app/secrets/keys/tracing
-            readOnly: true
-          - name: location-tls
-            mountPath: /app/secrets/keys/location
-            readOnly: true
-          - name: restful-tls
-            mountPath: /app/secrets/keys/restful
-            readOnly: true
       volumes:
       - name: app-tls
-        secret:
-          secretName: gateway-tls-v1
-      - name: gateway-config
-        configMap:
-          name: gateway-v3
-      - name: mysql-creds
-        secret:
-          secretName: mysql-credentials
-      - name: tracing-tls
         secret:
           secretName: tracing-tls-v1
       - name: messaging-tls
         secret:
           secretName: messaging-tls-v1
-      - name: location-tls
+      - name: app-config
+        configMap:
+          name: tracing-v2
+      - name: mysql-creds
         secret:
-          secretName: location-tls-v1
-      - name: restful-tls
-        secret:
-          secretName: restful-tls-v1
+          secretName: mysql-credentials
 
 ---
 apiVersion: "autoscaling/v2beta1"
 kind: "HorizontalPodAutoscaler"
 metadata:
-  name: "pandemic-api-gateway-hpa"
+  name: "pandemic-api-tracing-hpa"
   labels:
-    app: "pandemic-api-gateway"
+    app: "pandemic-api-tracing"
 spec:
   scaleTargetRef:
     kind: "Deployment"
-    name: "pandemic-api-gateway"
+    name: "pandemic-api-tracing"
     apiVersion: "apps/v1"
   minReplicas: 1
   maxReplicas: 5
@@ -108,21 +90,19 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gateway
+  name: tracing
   labels:
-    app: pandemic-api-gateway
+    app: pandemic-api-tracing
 spec:
-  type: NodePort
+  clusterIP: None
   selector:
-    app: pandemic-api-gateway
+    app: pandemic-api-tracing
   ports:
   - port: 443
     name: https
     targetPort: https
     protocol: TCP
-    nodePort: 30783
   - port: 80
     name: http
     targetPort: https
     protocol: TCP
-    nodePort: 30780
