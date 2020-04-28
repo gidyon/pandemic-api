@@ -1,3 +1,7 @@
 server.bin
 server
+gateway
 fightcovid19
+cmd/location/location
+cmd/tracing/tracing
+cmd/messaging/messaging
