@@ -14,7 +14,13 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: hakty11
       MYSQL_ROOT_PASSWORD: hakty11
-
+  redis:
+    container_name: redis
+    image: redislabs/redisearch:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - frontend-bridge
 networks: 
   frontend-bridge:
     external: true
