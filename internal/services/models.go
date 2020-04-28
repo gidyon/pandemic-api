@@ -1,8 +1,6 @@
 package services
 
 import (
-	"time"
-
 	"github.com/jinzhu/gorm"
 
 	"github.com/gidyon/pandemic-api/pkg/api/location"
@@ -10,16 +8,16 @@ import (
 
 // LocationModel is a geographic location
 type LocationModel struct {
-	UserID        string
-	Latitude      float32
-	Longitude     float32
-	PlaceMark     string
-	GeoFenceID    string
-	TimeID        string
-	Timestamp     int64
-	Accuracy      float32
-	Speed         float32
-	SpeedAccuracy float32
+	UserID        string  `gorm:"type:varchar(50);not null"`
+	Latitude      float32 `gorm:"type:float(10);not null"`
+	Longitude     float32 `gorm:"type:float(10);not null"`
+	PlaceMark     string  `gorm:"type:varchar(50);not null"`
+	GeoFenceID    string  `gorm:"type:varchar(50);not null"`
+	TimeID        string  `gorm:"type:varchar(50);not null"`
+	Timestamp     int64   `gorm:"type:int(15);not null"`
+	Accuracy      float32 `gorm:"type:float(10);not null"`
+	Speed         float32 `gorm:"type:float(10);not null"`
+	SpeedAccuracy float32 `gorm:"type:float(10);not null"`
 	gorm.Model
 }
 
@@ -54,17 +52,16 @@ func GetLocationPB(locationDB *LocationModel) *location.Location {
 }
 
 // UsersTable is users table
-const UsersTable = "users"
+const UsersTable = "app_users"
 
 // UserModel contains user data
 type UserModel struct {
-	PhoneNumber string
-	FullName    string
-	County      string
-	Status      int8
-	DeviceToken string
-	UpdatedAt   time.Time
-	CreatedAt   time.Time
+	PhoneNumber string `gorm:"type:varchar(15);not null"`
+	FullName    string `gorm:"type:varchar(50);not null"`
+	County      string `gorm:"type:varchar(50);not null"`
+	Status      int8   `gorm:"type:tinyint(1);default:0"`
+	DeviceToken string `gorm:"type:varchar(256);not null"`
+	gorm.Model
 }
 
 // TableName returns the name f the table
@@ -72,38 +69,22 @@ func (*UserModel) TableName() string {
 	return UsersTable
 }
 
-// ContactMessagesTable is table for contact messages
-const ContactMessagesTable = "contact_messages"
+// MessagesTable is messages table
+const MessagesTable = "messages"
 
-// ContactMessageData is database model for contacts point
-type ContactMessageData struct {
-	UserPhone     string
-	PatientPhone  string
-	Message       string
-	ContactsCount int32
-	Sent          bool
+// Message model
+type Message struct {
+	UserPhone string `gorm:"type:varchar(15);not null"`
+	Title     string `gorm:"type:varchar(30);not null"`
+	Message   string `gorm:"type:varchar(256);not null"`
+	DateTime  string `gorm:"type:varchar(30);not null"`
+	Data      []byte `gorm:"type:json"`
+	Sent      bool   `gorm:"type:tinyint(1);default:0"`
+	Type      int8   `gorm:"type:tinyint(1);default:0"`
 	gorm.Model
 }
 
 // TableName returns the name of the table
-func (*ContactMessageData) TableName() string {
-	return ContactMessagesTable
-}
-
-// GeneralMessagesTable is table containing general messages
-const GeneralMessagesTable = "general_messages"
-
-// GeneralMessageData is database model for general messages
-type GeneralMessageData struct {
-	MessageID string
-	UserPhone string
-	Title     string
-	Data      []byte
-	Sent      bool
-	gorm.Model
-}
-
-// TableName returns the name of the table
-func (*GeneralMessageData) TableName() string {
-	return GeneralMessagesTable
+func (*Message) TableName() string {
+	return MessagesTable
 }
