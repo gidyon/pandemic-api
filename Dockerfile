@@ -6,8 +6,9 @@ RUN apk update && \
    rm -rf /var/cache/apk/* && \
    apk add libc6-compat
 WORKDIR /app
-COPY server.bin .
+COPY dist dist
+COPY static static
 COPY api api
-COPY certs certs
+COPY gateway .
 EXPOSE 80 443
-ENTRYPOINT [ "/app/server.bin" ]
+ENTRYPOINT [ "/app/gateway", "--env" ]
