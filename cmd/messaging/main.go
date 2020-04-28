@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/gidyon/micros/utils/healthcheck"
+	"os"
 	"strings"
 
 	"github.com/appleboy/go-fcm"
@@ -25,10 +27,22 @@ func main() {
 	app, err := micros.NewService(ctx, cfg, nil)
 	handleErr(err)
 
+	// Readiness health check
+	app.AddEndpoint("/api/v1/messaging/readyq/", healthcheck.RegisterProbe(&healthcheck.ProbeOptions{
+		Service:      app,
+		Type:         healthcheck.ProbeReadiness,
+		AutoMigrator: func() error { return nil },
+	}))
+
+	// Liveness health check
+	app.AddEndpoint("/api/v1/messaging/liveq/", healthcheck.RegisterProbe(&healthcheck.ProbeOptions{
+		Service:      app,
+		Type:         healthcheck.ProbeLiveNess,
+		AutoMigrator: func() error { return nil },
+	}))
+
 	// FCM client
-	fcmClient, err := fcm.NewClient(
-		"AAAApoeNiqU:APA91bH7JMT0ITyGESfWtKzP8901ja834A_u4DP6rXw92OgujEPVJzqlL2fRyMjfU6yakaDGiGVaBBRfW-lwX7AGtBd_Ub1YZP4RMaIqCLkEZ18TD55oEReMu2ge5no1RQ5d7frrkEYW",
-	)
+	fcmClient, err := fcm.NewClient(os.Getenv("FCM_SERVER_KEY"))
 	handleErr(err)
 
 	// Create location tracing instance
@@ -43,6 +57,7 @@ func main() {
 	handleErr(app.InitGRPC(ctx))
 
 	location.RegisterMessagingServer(app.GRPCServer(), messagingAPI)
+	handleErr(location.RegisterMessagingHandlerServer(ctx, app.RuntimeMux(), messagingAPI))
 
 	handleErr(app.Run(ctx))
 }
