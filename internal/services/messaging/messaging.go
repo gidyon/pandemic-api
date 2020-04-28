@@ -70,7 +70,7 @@ func NewMessagingServer(
 	}
 
 	// Auto migration
-	err = ms.sqlDB.AutoMigrate(&services.GeneralMessageData{}, &services.UserModel{}, &services.ContactMessageData{}).Error
+	err = ms.sqlDB.AutoMigrate(&services.Message{}, &services.UserModel{}).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to automigrate: %v", err)
 	}
@@ -107,16 +107,29 @@ msgStreamLoop:
 func (s *messagingServer) alertContact(
 	contactData *location.ContactData,
 ) {
-	dataPayloadDB := &services.ContactMessageData{
-		UserPhone:    contactData.UserPhone,
-		PatientPhone: contactData.PatientPhone,
+	messageData := map[string]interface{}{
+		"patient_phone":  contactData.PatientPhone,
+		"contact_points": contactData.Count,
+	}
+
+	data, err := json.Marshal(messageData)
+	if err != nil {
+		s.sendError(contactData, err, false)
+		return
+	}
+
+	messageModel := &services.Message{
+		UserPhone: contactData.UserPhone,
+		Title:     "COVID-19 Alert!",
+		DateTime:  time.Now().Local().String(),
 		Message: fmt.Sprintf(
 			"Hello %s, you have been in contact %d times with a person who has now tested positive for COVID-19",
 			contactData.FullName,
 			contactData.Count,
 		),
-		ContactsCount: contactData.Count,
-		Sent:          true,
+		Sent: true,
+		Type: int8(location.MessageType_ALERT),
+		Data: data,
 	}
 
 	// Start a transaction
@@ -126,14 +139,14 @@ func (s *messagingServer) alertContact(
 			tx.Rollback()
 		}
 	}()
-	err := tx.Error
+	err = tx.Error
 	if err != nil {
 		s.sendError(contactData, err, false)
 		return
 	}
 
 	// Save data to database
-	err = tx.Create(dataPayloadDB).Error
+	err = tx.Create(messageModel).Error
 	if err != nil {
 		tx.Rollback()
 		s.sendError(contactData, err, false)
@@ -143,10 +156,10 @@ func (s *messagingServer) alertContact(
 	// Send message and notification
 	_, err = s.fcmClient.SendWithRetry(&fcm.Message{
 		To:   contactData.DeviceToken,
-		Data: map[string]interface{}{},
+		Data: messageData,
 		Notification: &fcm.Notification{
-			Title: "COVID-19 Alert",
-			Body:  dataPayloadDB.Message,
+			Title: messageModel.Title,
+			Body:  messageModel.Message,
 		},
 	}, 5)
 	if err != nil {
@@ -267,12 +280,14 @@ func (s *messagingServer) broadCastMessage(
 			deviceTokens = append(deviceTokens, userDB.DeviceToken)
 
 			// Save user message
-			userMsg := &services.GeneralMessageData{
-				MessageID: messageID,
+			userMsg := &services.Message{
 				UserPhone: userDB.PhoneNumber,
 				Title:     req.Title,
+				Message:   req.Message,
+				DateTime:  time.Now().Local().String(),
 				Data:      bs,
 				Sent:      true,
+				Type:      int8(req.Type),
 			}
 
 			err = tx.Create(userMsg).Error
@@ -307,24 +322,24 @@ func (s *messagingServer) broadCastMessage(
 }
 
 func (s *messagingServer) SendMessage(
-	ctx context.Context, req *location.SendMessageRequest,
+	ctx context.Context, msg *location.Message,
 ) (*location.SendMessageResponse, error) {
 	// Request must not be nil
-	if req == nil {
-		return nil, services.NilRequestError("SendMessageRequest")
+	if msg == nil {
+		return nil, services.NilRequestError("Message")
 	}
 
 	// Validation
 	var err error
 	switch {
-	case req.UserPhone == "":
+	case msg.UserPhone == "":
 		err = services.MissingFieldError("user phone")
-	case req.Title == "":
+	case msg.Title == "":
 		err = services.MissingFieldError("title")
-	case req.Message == "":
-		err = services.MissingFieldError("message")
-	case req.Payload == nil:
-		err = services.MissingFieldError("payload")
+	case msg.Notification == "":
+		err = services.MissingFieldError("notification")
+	case msg.Data == nil:
+		err = services.MissingFieldError("data")
 	}
 	if err != nil {
 		return nil, err
@@ -332,22 +347,14 @@ func (s *messagingServer) SendMessage(
 
 	// Get user device token
 	userDB := &services.UserModel{}
-	err = s.sqlDB.Table(services.UsersTable).First(userDB, "phone_number=?", req.UserPhone).Error
+	err = s.sqlDB.Table(services.UsersTable).First(userDB, "phone_number=?", msg.UserPhone).Error
 	switch {
 	case err == nil:
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		return nil, status.Errorf(codes.NotFound, "user with phone %s not found", req.UserPhone)
+		return nil, status.Errorf(codes.NotFound, "user with phone %s not found", msg.UserPhone)
 	default:
 		return nil, status.Errorf(codes.NotFound, "error happened: %v", err)
 	}
-
-	// Message payload
-	bs, err := json.Marshal(req.Payload)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to marshal payload: %v", err)
-	}
-
-	bid := uuid.New().String()
 
 	// Start transaction
 	tx := s.sqlDB.Begin()
@@ -362,31 +369,31 @@ func (s *messagingServer) SendMessage(
 	}
 
 	// Save user message
-	userMsg := &services.GeneralMessageData{
-		MessageID: bid,
-		UserPhone: userDB.PhoneNumber,
-		Title:     req.Title,
-		Data:      bs,
-		Sent:      false,
+	userMsg, err := getMessageDB(msg)
+	if err != nil {
+		return nil, err
 	}
+
+	userMsg.Sent = true
+
 	err = tx.Create(userMsg).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, status.Errorf(codes.Internal, "failed to save user broadcast message: %v", err)
 	}
 
-	paylod := map[string]interface{}{}
-	for key, value := range req.Payload {
-		paylod[key] = value
+	data := map[string]interface{}{}
+	for key, value := range msg.Data {
+		data[key] = value
 	}
 
 	// Send notification and message
 	_, err = s.fcmClient.SendWithRetry(&fcm.Message{
 		To:   userDB.DeviceToken,
-		Data: paylod,
+		Data: data,
 		Notification: &fcm.Notification{
-			Title: req.Title,
-			Body:  req.Message,
+			Title: msg.Title,
+			Body:  msg.Notification,
 		},
 	}, 5)
 	if err != nil {
@@ -401,8 +408,68 @@ func (s *messagingServer) SendMessage(
 	}
 
 	return &location.SendMessageResponse{
-		MessageId: bid,
+		MessageId: fmt.Sprint(userMsg.ID),
 	}, nil
+}
+
+func (s *messagingServer) GetMessages(
+	ctx context.Context, getReq *location.GetMessagesRequest,
+) (*location.Messages, error) {
+	// Requst must not be nil
+	if getReq == nil {
+		return nil, services.NilRequestError("GetMessagesRequest")
+	}
+
+	// Validation
+	var err error
+	switch {
+	case getReq.PhoneNumber == "":
+		err = services.MissingFieldError("user phone")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Normalize page
+	pageNumber, pageSize := normalizePage(getReq.GetPageToken(), getReq.GetPageSize())
+	offset := pageNumber*pageSize - pageSize
+
+	messagesDB := make([]*services.Message, 0)
+	err = s.sqlDB.Order("created_at, date_time DESC").Offset(offset).Limit(pageSize).
+		Find(&messagesDB, "user_phone=?", getReq.PhoneNumber).Error
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get messages: %v", err)
+	}
+
+	messagesPB := make([]*location.Message, 0, len(messagesDB))
+
+	for _, messageDB := range messagesDB {
+		messagePB, err := getMessagePB(messageDB)
+		if err != nil {
+			return nil, err
+		}
+
+		messagesPB = append(messagesPB, messagePB)
+	}
+
+	return &location.Messages{
+		Messages: messagesPB,
+	}, nil
+}
+
+const defaultPageSize = 10
+
+func normalizePage(pageToken, pageSize int32) (int, int) {
+	if pageToken <= 0 {
+		pageToken = 1
+	}
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > 20 {
+		pageSize = 20
+	}
+	return int(pageToken), int(pageSize)
 }
 
 func (s *messagingServer) sendError(payload *location.ContactData, err error, sending bool) {
@@ -414,4 +481,48 @@ func (s *messagingServer) sendError(payload *location.ContactData, err error, se
 		sending: sending,
 	}:
 	}
+}
+
+func getMessageDB(messagePB *location.Message) (*services.Message, error) {
+	messageDB := &services.Message{
+		UserPhone: messagePB.UserPhone,
+		Title:     messagePB.Title,
+		Message:   messagePB.Notification,
+		DateTime:  messagePB.DateTime,
+		Sent:      messagePB.Sent,
+		Type:      int8(messagePB.Type),
+	}
+
+	if len(messagePB.Data) != 0 {
+		data, err := json.Marshal(messagePB.Data)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to unmarshal: %v", err)
+		}
+		messageDB.Data = data
+	}
+
+	return messageDB, nil
+}
+
+func getMessagePB(messageDB *services.Message) (*location.Message, error) {
+	messagePB := &location.Message{
+		MessageId:    fmt.Sprint(messageDB.ID),
+		UserPhone:    messageDB.UserPhone,
+		Title:        messageDB.Title,
+		Notification: messageDB.Message,
+		DateTime:     messageDB.DateTime,
+		Sent:         messageDB.Sent,
+		Type:         location.MessageType(messageDB.Type),
+	}
+
+	if len(messageDB.Data) != 0 {
+		data := make(map[string]string, 0)
+		err := json.Unmarshal(messageDB.Data, &data)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to json unmarshal: %v", err)
+		}
+		messagePB.Data = data
+	}
+
+	return messagePB, nil
 }

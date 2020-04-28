@@ -16,9 +16,9 @@ var _ = Describe("Sending alerts for contact tracing £alerts", func() {
 		It("should send alert to user successfully", func() {
 			contactData := &location.ContactData{
 				Count:        20,
-				UserPhone:    randomdata.PhoneNumber(),
+				UserPhone:    randomPhone(),
 				FullName:     randomdata.FullName(randomdata.Male),
-				PatientPhone: randomdata.PhoneNumber(),
+				PatientPhone: randomPhone(),
 				DeviceToken:  randomdata.MacAddress(),
 			}
 
