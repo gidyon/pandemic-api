@@ -1,6 +1,6 @@
 serviceVersion: v1/beta
-serviceName: tracing_app
-servicePort: 5500
+serviceName: location_app
+servicePort: 5700
 logging:
   level: -1
   timeFormat: 2006-01-02T15:04:05Z07:00
@@ -17,6 +17,13 @@ databases:
     user: root
     schema: fightcovid19
     password: hakty11
+    # required: true
+    # address: ec2-18-222-71-177.us-east-2.compute.amazonaws.com:30800
+    # host: ec2-18-222-71-177.us-east-2.compute.amazonaws.com
+    # port: 30800
+    # user: root
+    # schema: fightcovid19_staging
+    # password: fightcovid19@2020
     metadata:
       name: mysql
       dialect: mysql
@@ -26,16 +33,10 @@ databases:
     address: 192.168.100.10:6379
     host: 192.168.100.10
     port: 6379
+    # required: true
+    # address: ec2-3-21-234-210.us-east-2.compute.amazonaws.com:30900
+    # host: ec2-3-21-234-210.us-east-2.compute.amazonaws.com
+    # port: 30900
     metadata:
       name: redis
       useRediSearch: true
-externalServices:
-- name: messaging
-  type: messaging
-  required: true
-  address: localhost:5600
-  host: localhost
-  port: 5600
-  tlsCert: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
-  serverName: localhost
-

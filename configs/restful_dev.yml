@@ -1,12 +1,12 @@
 serviceVersion: v1/beta
-serviceName: location_app
-servicePort: 5400
+serviceName: rest_app
+servicePort: 5800
 logging:
   level: -1
   timeFormat: 2006-01-02T15:04:05Z07:00
 security:
-  tlsCert: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
-  tlsKey: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
+  tlsCert: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
+  tlsKey: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
   serverName: localhost
 databases:
   sqlDatabase:
@@ -29,7 +29,7 @@ databases:
       dialect: mysql
       orm: gorm
   redisDatabase:
-    required: true
+    required: false
     address: 192.168.100.10:6379
     host: 192.168.100.10
     port: 6379

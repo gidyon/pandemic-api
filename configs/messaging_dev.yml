@@ -5,8 +5,8 @@ logging:
   level: -1
   timeFormat: 2006-01-02T15:04:05Z07:00
 security:
-  tlsCert: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
-  tlsKey: /Users/jessegitaka/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
+  tlsCert: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
+  tlsKey: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
   serverName: localhost
 databases:
   sqlDatabase:
