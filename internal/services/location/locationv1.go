@@ -1,11 +1,10 @@
-package services
+package location
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	services "github.com/gidyon/pandemic-api/internal/services"
@@ -240,23 +239,25 @@ func (locationManager *locationAPIServer) UpdateUserStatus(
 }
 
 func (locationManager *locationAPIServer) AddUser(
-	ctx context.Context, sendReq *location.AddUserRequest,
+	ctx context.Context, addReq *location.AddUserRequest,
 ) (*empty.Empty, error) {
 	// Request must not be  nil
-	if sendReq == nil {
+	if addReq == nil {
 		return nil, services.NilRequestError("AddUserRequest")
 	}
 
 	// Validation
 	var err error
 	switch {
-	case sendReq.PhoneNumber == "":
+	case addReq.User == nil:
+		err = services.MissingFieldError("user")
+	case addReq.User.PhoneNumber == "":
 		err = services.MissingFieldError("phone number")
-	case sendReq.FullName == "":
+	case addReq.User.FullName == "":
 		err = services.MissingFieldError("full name")
-	case sendReq.DeviceToken == "":
+	case addReq.User.DeviceToken == "":
 		err = services.MissingFieldError("device token")
-	case sendReq.County == "":
+	case addReq.User.County == "":
 		err = services.MissingFieldError("county")
 	}
 	if err != nil {
@@ -264,28 +265,163 @@ func (locationManager *locationAPIServer) AddUser(
 	}
 
 	// Reset their status to unknown
-	sendReq.StatusId = location.Status_UNKNOWN
+	addReq.User.Status = location.Status_UNKNOWN
 
-	// Save user
-	err = locationManager.logsDB.Create(&services.UserModel{
-		PhoneNumber: sendReq.PhoneNumber,
-		FullName:    sendReq.FullName,
-		Status:      int8(sendReq.StatusId),
-		DeviceToken: sendReq.DeviceToken,
-	}).Error
-	switch {
-	case strings.Contains(strings.ToLower(err.Error()), "duplicate"):
-		if strings.Contains(err.Error(), "phone_number") {
-			err = status.Error(codes.ResourceExhausted, "phone number already registred")
-		} else {
-			err = status.Errorf(codes.ResourceExhausted, "user is already registred: %v", err)
-		}
-	default:
-		err = status.Errorf(codes.Internal, "saving user failed: %v", err)
+	userModel, err := getUserDB(addReq.User)
+	if err != nil {
+		return nil, err
 	}
+
+	// If user already exists, performs an update
+	alreadyExists := !locationManager.logsDB.
+		First(&services.UserModel{}, "phone_number=?", addReq.User.PhoneNumber).RecordNotFound()
+
+	if alreadyExists {
+		err = locationManager.logsDB.Table(services.UsersTable).Where("phone_number=?", addReq.User.PhoneNumber).
+			Omit("status", "traced").Updates(userModel).Error
+		switch {
+		case err == nil:
+		default:
+			err = status.Errorf(codes.Internal, "saving user failed: %v", err)
+		}
+	} else {
+		// Save user
+		err = locationManager.logsDB.Save(userModel).Error
+		switch {
+		case err == nil:
+		// case strings.Contains(strings.ToLower(err.Error()), "duplicate"):
+		// 	if strings.Contains(err.Error(), "phone_number") {
+		// 		err = status.Error(codes.ResourceExhausted, "phone number already registred")
+		// 	} else {
+		// 		err = status.Errorf(codes.ResourceExhausted, "user is already registred: %v", err)
+		// 	}
+		default:
+			err = status.Errorf(codes.Internal, "saving user failed: %v", err)
+		}
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
 	return &empty.Empty{}, nil
+}
+
+func (locationManager *locationAPIServer) GetUser(
+	ctx context.Context, getReq *location.GetUserRequest,
+) (*location.User, error) {
+	// Requets must not be nil
+	if getReq == nil {
+		return nil, services.NilRequestError("GetUserRequest")
+	}
+
+	// Validation
+	var err error
+	switch {
+	case getReq.PhoneNumber == "":
+		err = services.MissingFieldError("phone number")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Get from database
+	userDB := &services.UserModel{}
+	err = locationManager.logsDB.First(userDB, "phone_number=?", getReq.PhoneNumber).Error
+	switch {
+	case err == nil:
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		err = status.Errorf(codes.NotFound, "user not found: %v", err)
+	default:
+		err = status.Errorf(codes.Internal, "failed to get user: %v", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	userPB, err := getUserPB(userDB)
+	if err != nil {
+		return nil, err
+	}
+
+	return userPB, nil
+}
+
+func (locationManager *locationAPIServer) ListUsers(
+	ctx context.Context, listReq *location.ListUsersRequest,
+) (*location.ListUsersResponse, error) {
+	// Request must not be nil
+	if listReq == nil {
+		return nil, services.NilRequestError("ListUsersRequest")
+	}
+
+	pageNumber, pageSize := normalizePage(listReq.PageToken, listReq.PageSize)
+	offset := pageNumber*pageSize - pageSize
+
+	condition := fmt.Sprintf("status=%d", listReq.FilterStatus)
+	if listReq.FilterStatus == location.Status_UNKNOWN {
+		condition = ""
+	}
+
+	usersDB := make([]*services.UserModel, 0)
+	err := locationManager.logsDB.Offset(offset).Limit(pageSize).
+		Find(&usersDB, condition).Error
+	switch {
+	case err == nil:
+	default:
+		return nil, status.Errorf(codes.Internal, "failed to get users from db: %v", err)
+	}
+
+	usersPB := make([]*location.User, 0, len(usersDB))
+	for _, userDB := range usersDB {
+		userPB, err := getUserPB(userDB)
+		if err != nil {
+			return nil, err
+		}
+		usersPB = append(usersPB, userPB)
+	}
+
+	return &location.ListUsersResponse{
+		Users:         usersPB,
+		NextPageToken: int32(pageNumber + 1),
+	}, nil
+}
+
+const defaultPageSize = 10
+
+func normalizePage(pageToken, pageSize int32) (int, int) {
+	if pageToken <= 0 {
+		pageToken = 1
+	}
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > 20 {
+		pageSize = 20
+	}
+	return int(pageToken), int(pageSize)
+}
+
+func getUserDB(userPB *location.User) (*services.UserModel, error) {
+	userDB := &services.UserModel{
+		PhoneNumber: userPB.PhoneNumber,
+		FullName:    userPB.FullName,
+		County:      userPB.County,
+		Status:      int8(userPB.Status),
+		DeviceToken: userPB.DeviceToken,
+		Traced:      userPB.Traced,
+	}
+	return userDB, nil
+}
+
+func getUserPB(userDB *services.UserModel) (*location.User, error) {
+	userPB := &location.User{
+		PhoneNumber: userDB.PhoneNumber,
+		FullName:    userDB.FullName,
+		County:      userDB.County,
+		Status:      location.Status(userDB.Status),
+		DeviceToken: userDB.DeviceToken,
+		Traced:      userDB.Traced,
+	}
+	return userPB, nil
 }
