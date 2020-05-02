@@ -53,11 +53,35 @@ message UpdateUserStatusRequest {
 
 // AddUserRequest is request to add a user
 message AddUserRequest {
+    User user = 1;
+}
+
+// User is an app user
+message User {
     string phone_number = 1;
-    Status status_id = 2;
-    string full_name = 3;
-    string device_token = 4;
-    string county = 5;
+    string full_name = 2;
+    string county = 3;
+    Status status = 4;
+    string device_token = 5;
+    bool traced = 6;   
+}
+
+// GetUserRequest is request to retrieve a single user
+message GetUserRequest {
+    string phone_number = 1;
+}
+
+// ListUsersRequest is request to get collection of users from database
+message ListUsersRequest {
+    int32 page_size = 1;
+    int32 page_token = 2;
+    Status filter_status = 3;
+}
+
+// ListUsersResponse is response after fetching users
+message ListUsersResponse {
+    repeated User users = 1;
+    int32 next_page_token = 2;
 }
 
 // Manages user locations and activities
@@ -73,7 +97,7 @@ service LocationTracingAPI {
     };
 
     // Sends user locations
-    rpc SendLocations (stream SendLocationRequest) returns (google.protobuf.Empty) {
+    rpc SendLocations (SendLocationsRequest) returns (google.protobuf.Empty) {
         // Maps to HTTP POST
         // Everything maps to the body of the request
         option (google.api.http) = {
@@ -97,7 +121,27 @@ service LocationTracingAPI {
         // Maps to HTTP POST
         // Everything maps to the body of the request
         option (google.api.http) = {
-            post: "/api/v1/users/add"
+            post: "/api/v1/users/action/add"
+            body: "*"
+        };
+    };
+
+    // Retrieves a single user
+    rpc GetUser (GetUserRequest) returns (User) {
+        // Maps to HTTP GET
+        // phone_number is passed as url path parameter
+        option (google.api.http) = {
+            post: "/api/v1/users/{phone_number}"
+            body: "*"
+        };
+    };
+
+    // Retrieves a collection of users
+    rpc ListUsers (ListUsersRequest) returns (ListUsersResponse) {
+        // Maps to HTTP GET
+        // phone_number is passed as url path parameter
+        option (google.api.http) = {
+            post: "/api/v1/users/action/list"
             body: "*"
         };
     };
@@ -175,7 +219,7 @@ message Message {
     string user_phone = 2;
     string title = 3;
     string notification = 4;
-    string date_time = 5;
+    int64 timestamp = 5;
     bool sent = 6;
     MessageType type = 7;
     map<string, string> data = 8;
