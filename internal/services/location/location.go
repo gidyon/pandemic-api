@@ -1,4 +1,4 @@
-package services
+package location
 
 // import (
 // 	"context"
@@ -417,92 +417,4 @@ package services
 // }
 // func failedCommitTx(err error) error {
 // 	return status.Errorf(codes.Internal, "failed to commit transaction: %v", err)
-// }
-
-// func (locationManager *locationAPIServer) UpdateUserStatus(
-// 	ctx context.Context, updatReq *location.UpdateUserStatusRequest,
-// ) (*empty.Empty, error) {
-// 	// Request must not be nil
-// 	if updatReq == nil {
-// 		return nil, nilRequestError("UpdateUserStatusRequest")
-// 	}
-
-// 	// Validation
-// 	var err error
-// 	switch {
-// 	case updatReq.UserId == "":
-// 		err = missingFieldError("user id")
-// 	case updatReq.Status == "":
-// 		err = missingFieldError("status id")
-// 	}
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	tx := locationManager.logsDB.Begin()
-// 	if tx.Error != nil {
-// 		return nil, failedToBeginTx(err)
-// 	}
-// 	defer tx.Close()
-
-// 	// Update status in database
-// 	err = tx.Table(usersTable).Where("user_id=?", updatReq.UserId).
-// 		Update("status", updatReq.Status).Error
-// 	if err != nil {
-// 		return nil, failedToBeginTx(err)
-// 	}
-
-// 	// Add user to list of users with COVID-19
-// 	_, err = locationManager.eventsDB.LPush(infectedUsers, updatReq.UserId).Result()
-// 	if err != nil {
-// 		tx.Rollback()
-// 		return nil, status.Errorf(codes.Internal, "failed to add users to list of infected users: %v", err)
-// 	}
-
-// 	err = tx.Commit().Error
-// 	if err != nil {
-// 		return nil, failedCommitTx(err)
-// 	}
-
-// 	return &empty.Empty{}, nil
-// }
-
-// func (locationManager *locationAPIServer) AddUser(
-// 	ctx context.Context, addReq *location.AddUserRequest,
-// ) (*empty.Empty, error) {
-// 	// Request must not be  nil
-// 	if addReq == nil {
-// 		return nil, nilRequestError("AddUserRequest")
-// 	}
-
-// 	// Validation
-// 	var err error
-// 	switch {
-// 	case addReq.PhoneNumber == "":
-// 		err = missingFieldError("phone number")
-// 	case addReq.StatusId == "":
-// 		err = missingFieldError("status id")
-// 	}
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	// Save user
-// 	err = locationManager.logsDB.Create(&userModel{
-// 		UserID:      uuid.New().String(),
-// 		PhoneNumber: addReq.PhoneNumber,
-// 		Status:      addReq.StatusId,
-// 	}).Error
-// 	switch {
-// 	case err == nil:
-// 	case strings.Contains(strings.ToLower(err.Error()), "duplicate"):
-// 		err = status.Error(codes.ResourceExhausted, "phone already registred")
-// 	default:
-// 		err = status.Errorf(codes.Internal, "saving user failed: %v", err)
-// 	}
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &empty.Empty{}, nil
 // }

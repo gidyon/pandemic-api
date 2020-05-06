@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/gidyon/pandemic-api/internal/services/location/conversion"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
 	"time"
 
 	services "github.com/gidyon/pandemic-api/internal/services"
@@ -18,17 +21,28 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const timeBoundary = time.Duration(5 * time.Minute)
+const (
+	timeBoundary   = time.Duration(5 * time.Minute)
+	alertRadius    = 10  // 10 meters
+	socialDistance = 1.5 //meters
+	durationRange  = 5 * time.Minute
+)
 
 type locationAPIServer struct {
-	logsDB   *gorm.DB
-	eventsDB *redis.Client
+	logsDB          *gorm.DB
+	eventsDB        *redis.Client
+	logger          grpclog.LoggerV2
+	messagingClient messaging.MessagingClient
+	realtimeAlerts  bool
 }
 
 // Options contains parameters for NewLocationTracing
 type Options struct {
-	LogsDB   *gorm.DB
-	EventsDB *redis.Client
+	LogsDB          *gorm.DB
+	EventsDB        *redis.Client
+	Logger          grpclog.LoggerV2
+	MessagingClient messaging.MessagingClient
+	RealTimeAlerts  bool
 }
 
 // NewLocationTracing creates a new location tracing API
@@ -42,14 +56,21 @@ func NewLocationTracing(ctx context.Context, opt *Options) (location.LocationTra
 		err = errors.New("non-nil logsDB is required")
 	case opt.EventsDB == nil:
 		err = errors.New("non-nil eventsDB is required")
+	case opt.Logger == nil:
+		err = errors.New("non-nil grpc logger is required")
+	case opt.MessagingClient == nil:
+		err = errors.New("non-nil messaging client is required")
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	locationManager := &locationAPIServer{
-		logsDB:   opt.LogsDB,
-		eventsDB: opt.EventsDB,
+		logsDB:          opt.LogsDB,
+		eventsDB:        opt.EventsDB,
+		logger:          opt.Logger,
+		messagingClient: opt.MessagingClient,
+		realtimeAlerts:  opt.RealTimeAlerts,
 	}
 
 	// Automigration
@@ -77,12 +98,10 @@ func validateLocation(locationPB *location.Location) error {
 		err = services.MissingFieldError("location longitude")
 	case locationPB.GetLatitude() == 0.0:
 		err = services.MissingFieldError("location latitude")
-	case locationPB.GetGeoFenceId() == "":
-		err = services.MissingFieldError("location geo fence id")
 	case locationPB.Timestamp == 0.0:
 		err = services.MissingFieldError("location timestamp")
-	case locationPB.TimeId == "":
-		err = services.MissingFieldError("location time id")
+	case locationPB.GeoFenceId == "":
+		err = services.MissingFieldError("location geo fence id")
 	}
 	if err != nil {
 		return err
@@ -96,12 +115,17 @@ func getUserSetKeyToday(userID string) string {
 	return fmt.Sprintf("%s:%s", userID, date)
 }
 
-func (locationManager *locationAPIServer) validateAndSaveLocation(sendReq *location.SendLocationRequest) error {
+func (locationManager *locationAPIServer) validateAndSaveLocation(
+	sendReq *location.SendLocationRequest, notifyUser bool,
+) error {
 	locationPB := sendReq.GetLocation()
 	err := validateLocation(locationPB)
 	if err != nil {
 		return err
 	}
+
+	// Update location on server
+	locationPB.TimeId = conversion.GetTimeID(locationPB, durationRange)
 
 	// Validate user id and status
 	switch {
@@ -111,6 +135,7 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(sendReq *locat
 		return services.MissingFieldError("status id")
 	}
 
+	// save user log to redis
 	key := getUserSetKeyToday(sendReq.UserId)
 
 	// Add to set
@@ -121,7 +146,24 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(sendReq *locat
 		return status.Errorf(codes.Internal, "failed to add location to set: %v", err)
 	}
 
+	if sendReq.StatusId == location.Status_POSITIVE {
+		// Add to blacklist
+		err = locationManager.eventsDB.SAdd(
+			getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
+		).Err()
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to add location to set: %v", err)
+		}
+	} else {
+		if notifyUser {
+			go locationManager.sendUserAlert(locationPB, sendReq.UserId)
+		}
+	}
+
+	// Save to database
 	locationDB := services.GetLocationDB(locationPB)
+
+	locationDB.UserID = sendReq.UserId
 
 	// Add to database
 	err = locationManager.logsDB.Create(locationDB).Error
@@ -132,6 +174,42 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(sendReq *locat
 	return nil
 }
 
+func getTimeKey(timeID string) string {
+	return fmt.Sprintf("time:%s", timeID)
+}
+
+func getAlertGeoFenceID(loc *location.Location) string {
+	return conversion.GeoFenceID(loc, alertRadius)
+}
+
+func (locationManager *locationAPIServer) sendUserAlert(loc *location.Location, phoneNumber string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	danger, err := locationManager.eventsDB.SIsMember(
+		getTimeKey(loc.GetTimeId()), getAlertGeoFenceID(loc),
+	).Result()
+	if err != nil {
+		locationManager.logger.Errorf("failed to get cases: %v", err)
+		return
+	}
+
+	if danger {
+		// Send message to user
+		_, err = locationManager.messagingClient.SendMessage(ctx, &messaging.Message{
+			UserPhone:    phoneNumber,
+			Title:        "COVID-19 Social Distancing Alert",
+			Notification: "You are currently in an area with a COVID-19 cases. Ensure you maintain social distance",
+			Timestamp:    time.Now().Unix(),
+			Type:         messaging.MessageType_ALERT,
+		}, grpc.WaitForReady(true))
+		if err != nil {
+			locationManager.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
+			return
+		}
+	}
+}
+
 func (locationManager *locationAPIServer) SendLocation(
 	ctx context.Context, sendReq *location.SendLocationRequest,
 ) (*empty.Empty, error) {
@@ -140,7 +218,7 @@ func (locationManager *locationAPIServer) SendLocation(
 		return nil, services.NilRequestError("SendLocationsRequest")
 	}
 
-	err := locationManager.validateAndSaveLocation(sendReq)
+	err := locationManager.validateAndSaveLocation(sendReq, locationManager.realtimeAlerts)
 	if err != nil {
 		return nil, err
 	}
@@ -149,37 +227,86 @@ func (locationManager *locationAPIServer) SendLocation(
 }
 
 func (locationManager *locationAPIServer) SendLocations(
-	sendStream location.LocationTracingAPI_SendLocationsServer,
-) error {
-	// Request should not be nil
-	if sendStream == nil {
-		return services.NilRequestError("LocationTracingAPI_SendLocationsServer")
+	ctx context.Context, sendReq *location.SendLocationsRequest,
+) (*empty.Empty, error) {
+	// Request must not be nil
+	if sendReq == nil {
+		return nil, services.NilRequestError("SendLocationsRequest")
 	}
 
-streamLoop:
-	for {
-		sendReq, err := sendStream.Recv()
-		switch {
-		case err == nil:
-		case errors.Is(err, io.EOF):
-			break streamLoop
-		default:
-			return status.Errorf(codes.Unknown, "failed to receive from stream: %v", err)
-		}
+	// Validation
+	var err error
+	switch {
+	case sendReq.GetStatusId().String() == "":
+		err = services.MissingFieldError("status")
+	case sendReq.GetUserId() == "":
+		err = services.MissingFieldError("user id")
+	}
+	if err != nil {
+		return nil, err
+	}
 
-		// Request must not be nil
-		if sendReq == nil {
-			return services.NilRequestError("SendLocationsRequest")
-		}
-
-		// Validate and save location
-		err = locationManager.validateAndSaveLocation(sendReq)
+	var (
+		shouldNotify    bool
+		approximateTime string
+		placeMark       string
+		maxTimestamp    int64
+	)
+	// Validate and save locations
+	for _, locationPB := range sendReq.Locations {
+		err = locationManager.validateAndSaveLocation(&location.SendLocationRequest{
+			UserId:   sendReq.UserId,
+			StatusId: sendReq.StatusId,
+			Location: locationPB,
+		}, false)
 		if err != nil {
-			return err
+			locationManager.logger.Errorf("error while saving user locations: %v", err)
+			continue
+		}
+
+		// Check if there exist case
+		danger, err := locationManager.eventsDB.SIsMember(
+			getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
+		).Result()
+		if err != nil {
+			locationManager.logger.Errorf("error checking for regional alerts: %v", err)
+			continue
+		}
+		if danger {
+			if locationPB.Timestamp > maxTimestamp {
+				maxTimestamp = locationPB.Timestamp
+				placeMark = locationPB.Placemark
+				appTime := time.Unix(locationPB.Timestamp, 0)
+				approximateTime = appTime.Format(time.RFC1123)
+			}
+			shouldNotify = true
 		}
 	}
 
-	return sendStream.SendAndClose(&empty.Empty{})
+	if shouldNotify && locationManager.realtimeAlerts {
+
+		// Send user a notification
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			_, err := locationManager.messagingClient.SendMessage(ctx, &messaging.Message{
+				UserPhone: sendReq.UserId,
+				Title:     "COVID-19 Social Distancing Warning",
+				Notification: fmt.Sprintf(
+					"You were in an area (10m diameter) with confirmed COVID-19 cases near %s at around %s. Always ensure you maintain social distance",
+					placeMark, approximateTime,
+				),
+				Timestamp: time.Now().Unix(),
+				Type:      messaging.MessageType_WARNING,
+			}, grpc.WaitForReady(true))
+			if err != nil {
+				locationManager.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
+			}
+		}()
+	}
+
+	return &empty.Empty{}, nil
 }
 
 const infectedUsers = "infected:users"
@@ -255,17 +382,12 @@ func (locationManager *locationAPIServer) AddUser(
 		err = services.MissingFieldError("phone number")
 	case addReq.User.FullName == "":
 		err = services.MissingFieldError("full name")
-	case addReq.User.DeviceToken == "":
-		err = services.MissingFieldError("device token")
 	case addReq.User.County == "":
 		err = services.MissingFieldError("county")
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	// Reset their status to unknown
-	addReq.User.Status = location.Status_UNKNOWN
 
 	userModel, err := getUserDB(addReq.User)
 	if err != nil {
@@ -278,25 +400,20 @@ func (locationManager *locationAPIServer) AddUser(
 
 	if alreadyExists {
 		err = locationManager.logsDB.Table(services.UsersTable).Where("phone_number=?", addReq.User.PhoneNumber).
-			Omit("status", "traced").Updates(userModel).Error
+			Omit("traced").Updates(userModel).Error
 		switch {
 		case err == nil:
 		default:
 			err = status.Errorf(codes.Internal, "saving user failed: %v", err)
 		}
 	} else {
-		// Save user
-		err = locationManager.logsDB.Save(userModel).Error
+		// Reset their status to unknown
+		addReq.User.Status = location.Status_UNKNOWN
+		err = locationManager.logsDB.Create(userModel).Error
 		switch {
 		case err == nil:
-		// case strings.Contains(strings.ToLower(err.Error()), "duplicate"):
-		// 	if strings.Contains(err.Error(), "phone_number") {
-		// 		err = status.Error(codes.ResourceExhausted, "phone number already registred")
-		// 	} else {
-		// 		err = status.Errorf(codes.ResourceExhausted, "user is already registred: %v", err)
-		// 	}
 		default:
-			err = status.Errorf(codes.Internal, "saving user failed: %v", err)
+			err = status.Errorf(codes.Internal, "creating user failed: %v", err)
 		}
 	}
 
@@ -331,7 +448,7 @@ func (locationManager *locationAPIServer) GetUser(
 	switch {
 	case err == nil:
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		err = status.Errorf(codes.NotFound, "user not found: %v", err)
+		err = status.Errorf(codes.NotFound, "user not with phone number %s found: %v", getReq.PhoneNumber, err)
 	default:
 		err = status.Errorf(codes.Internal, "failed to get user: %v", err)
 	}
@@ -416,12 +533,13 @@ func getUserDB(userPB *location.User) (*services.UserModel, error) {
 
 func getUserPB(userDB *services.UserModel) (*location.User, error) {
 	userPB := &location.User{
-		PhoneNumber: userDB.PhoneNumber,
-		FullName:    userDB.FullName,
-		County:      userDB.County,
-		Status:      location.Status(userDB.Status),
-		DeviceToken: userDB.DeviceToken,
-		Traced:      userDB.Traced,
+		PhoneNumber:      userDB.PhoneNumber,
+		FullName:         userDB.FullName,
+		County:           userDB.County,
+		Status:           location.Status(userDB.Status),
+		DeviceToken:      userDB.DeviceToken,
+		Traced:           userDB.Traced,
+		UpdatedTimestamp: userDB.UpdatedAt.Unix(),
 	}
 	return userPB, nil
 }
