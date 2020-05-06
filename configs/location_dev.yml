@@ -33,10 +33,15 @@ databases:
     address: 192.168.100.10:6379
     host: 192.168.100.10
     port: 6379
-    # required: true
-    # address: ec2-3-21-234-210.us-east-2.compute.amazonaws.com:30900
-    # host: ec2-3-21-234-210.us-east-2.compute.amazonaws.com
-    # port: 30900
     metadata:
       name: redis
       useRediSearch: true
+externalServices:
+- name: messaging
+  type: messaging
+  required: true
+  address: localhost:5600
+  host: localhost
+  port: 5600
+  tlsCert: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
+  serverName: localhost
