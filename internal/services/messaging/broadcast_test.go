@@ -8,23 +8,23 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 )
 
 var _ = Describe("Broadcasting a message to many users £broadcast", func() {
 	var (
-		broadCastReq *location.BroadCastMessageRequest
+		broadCastReq *messaging.BroadCastMessageRequest
 		ctx          context.Context
 	)
 
 	BeforeEach(func() {
-		broadCastReq = &location.BroadCastMessageRequest{
+		broadCastReq = &messaging.BroadCastMessageRequest{
 			Title:   randomdata.Paragraph()[:10],
 			Message: randomdata.Paragraph(),
-			Filters: []location.BroadCastMessageFilter{
-				location.BroadCastMessageFilter_ALL,
-				// location.BroadCastMessageFilter_POSITIVES,
-				// location.BroadCastMessageFilter_BY_COUNTY,
+			Filters: []messaging.BroadCastMessageFilter{
+				messaging.BroadCastMessageFilter_ALL,
+				// messaging.BroadCastMessageFilter_POSITIVES,
+				// messaging.BroadCastMessageFilter_BY_COUNTY,
 			},
 			Topics: []string{randomdata.State(randomdata.Small)},
 			Payload: map[string]string{

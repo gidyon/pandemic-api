@@ -12,7 +12,7 @@ import (
 	"github.com/gidyon/pandemic-api/internal/services/messaging/mocks"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 	"github.com/jinzhu/gorm"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -27,7 +27,7 @@ func TestMessaging(t *testing.T) {
 
 var (
 	MessagingServer *messagingServer
-	MessagingAPI    location.MessagingServer
+	MessagingAPI    messaging.MessagingServer
 )
 
 const (

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"math/rand"
 	"strconv"
 	"time"
@@ -13,23 +14,31 @@ import (
 
 	"github.com/Pallinder/go-randomdata"
 
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 )
 
-func randomType() location.MessageType {
-	return location.MessageType(rand.Intn(len(location.MessageType_name)))
+func randomType() messaging.MessageType {
+	return messaging.MessageType(rand.Intn(len(messaging.MessageType_name)))
 }
 
 func randomPhone() string {
 	return randomdata.PhoneNumber()[:12]
 }
 
-func fakeMessage() *location.Message {
-	return &location.Message{
+func randoParagraph() string {
+	par := randomdata.Paragraph()
+	if len(par) > 256 {
+		par = par[:255]
+	}
+	return par
+}
+
+func fakeMessage() *messaging.Message {
+	return &messaging.Message{
 		UserPhone:    randomPhone(),
 		Title:        randomdata.Paragraph()[:10],
-		Notification: randomdata.Paragraph(),
-		DateTime:     time.Now().Local().String()[:15],
+		Notification: randoParagraph(),
+		Timestamp:    time.Now().Unix(),
 		Sent:         false,
 		Type:         randomType(),
 		Data: map[string]string{
@@ -41,7 +50,7 @@ func fakeMessage() *location.Message {
 
 var _ = Describe("Sending messages £sending", func() {
 	var (
-		sendReq *location.Message
+		sendReq *messaging.Message
 		ctx     context.Context
 	)
 
