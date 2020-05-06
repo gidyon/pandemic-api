@@ -24,3 +24,19 @@ func FailedToBeginTx(err error) error {
 func FailedToCommitTx(err error) error {
 	return status.Errorf(codes.Internal, "failed to commit transaction: %v", err)
 }
+
+const defaultPageSize = 10
+
+// NormalizePage parses page token and page size and reset weird values
+func NormalizePage(pageToken, pageSize int32) (int, int) {
+	if pageToken <= 0 {
+		pageToken = 1
+	}
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+	if pageSize > 20 {
+		pageSize = 20
+	}
+	return int(pageToken), int(pageSize)
+}

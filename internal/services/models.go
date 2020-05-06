@@ -6,6 +6,9 @@ import (
 	"github.com/gidyon/pandemic-api/pkg/api/location"
 )
 
+// LocationsTable locations table
+const LocationsTable = "locations"
+
 // LocationModel is a geographic location
 type LocationModel struct {
 	UserID        string  `gorm:"type:varchar(50);not null"`
@@ -14,11 +17,16 @@ type LocationModel struct {
 	PlaceMark     string  `gorm:"type:varchar(50);not null"`
 	GeoFenceID    string  `gorm:"type:varchar(50);not null"`
 	TimeID        string  `gorm:"type:varchar(50);not null"`
-	Timestamp     int64   `gorm:"type:int(15);not null"`
+	Timestamp     int64   `gorm:"type:bigint(20);not null"`
 	Accuracy      float32 `gorm:"type:float(10);not null"`
 	Speed         float32 `gorm:"type:float(10);not null"`
 	SpeedAccuracy float32 `gorm:"type:float(10);not null"`
 	gorm.Model
+}
+
+// TableName returns table name
+func (*LocationModel) TableName() string {
+	return LocationsTable
 }
 
 // GetLocationDB creates location model from given location proto
@@ -52,7 +60,7 @@ func GetLocationPB(locationDB *LocationModel) *location.Location {
 }
 
 // UsersTable is users table
-const UsersTable = "app_users"
+const UsersTable = "users"
 
 // UserModel contains user data
 type UserModel struct {
@@ -61,6 +69,7 @@ type UserModel struct {
 	County      string `gorm:"type:varchar(50);not null"`
 	Status      int8   `gorm:"type:tinyint(1);default:0"`
 	DeviceToken string `gorm:"type:varchar(256);not null"`
+	Traced      bool   `gorm:"type:tinyint(1);default:0"`
 	gorm.Model
 }
 
@@ -77,7 +86,6 @@ type Message struct {
 	UserPhone string `gorm:"type:varchar(15);not null"`
 	Title     string `gorm:"type:varchar(30);not null"`
 	Message   string `gorm:"type:varchar(256);not null"`
-	DateTime  string `gorm:"type:varchar(30);not null"`
 	Data      []byte `gorm:"type:json"`
 	Sent      bool   `gorm:"type:tinyint(1);default:0"`
 	Type      int8   `gorm:"type:tinyint(1);default:0"`
@@ -87,4 +95,27 @@ type Message struct {
 // TableName returns the name of the table
 func (*Message) TableName() string {
 	return MessagesTable
+}
+
+// int64 id = 1;
+//     string county = 2;
+//     string description = 3;
+//     int64 timestamp = 4;
+//     google.longrunning.Operation payload = 5;
+
+// ContactTracingOperationTable is table that hold contact tracing operations
+const ContactTracingOperationTable = "operations"
+
+// ContactTracingOperation is model for contact tracing operation
+type ContactTracingOperation struct {
+	County      string `gorm:"type:varchar(50);not null"`
+	Description string `gorm:"type:varchar(144);not null"`
+	Done        bool   `gorm:"type:tinyint(1);default:0"`
+	Payload     []byte `gorm:"type:json"`
+	gorm.Model
+}
+
+// TableName is table name
+func (*ContactTracingOperation) TableName() string {
+	return ContactTracingOperationTable
 }
