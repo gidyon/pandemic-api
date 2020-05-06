@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"io"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 
 	"github.com/appleboy/go-fcm"
 	"github.com/gidyon/pandemic-api/internal/services"
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 )
 
 type messagingServer struct {
@@ -39,7 +40,7 @@ type Options struct {
 }
 
 type fcmErrFDetails struct {
-	payload *location.ContactData
+	payload *messaging.ContactData
 	err     error
 	sending bool
 }
@@ -47,7 +48,7 @@ type fcmErrFDetails struct {
 // NewMessagingServer creates a new fcm MessagingServer server
 func NewMessagingServer(
 	ctx context.Context, opt *Options,
-) (location.MessagingServer, error) {
+) (messaging.MessagingServer, error) {
 	// Validation
 	var err error
 	switch {
@@ -79,56 +80,56 @@ func NewMessagingServer(
 }
 
 func (s *messagingServer) AlertContacts(
-	msgStream location.Messaging_AlertContactsServer,
+	msgStream messaging.Messaging_AlertContactsServer,
 ) error {
 	// Request must not be nil
 	if msgStream == nil {
 		return services.NilRequestError("Messaging_DispatchContactMessageServer")
 	}
 
-msgStreamLoop:
 	for {
 		contactData, err := msgStream.Recv()
 		switch {
 		case err == nil:
 		case errors.Is(err, io.EOF):
-			break msgStreamLoop
+			return msgStream.SendAndClose(&empty.Empty{})
 		default:
-			continue
+			return msgStream.SendAndClose(&empty.Empty{})
 		}
 
 		// Send message to device
-		go s.alertContact(contactData)
+		err = s.alertContact(contactData)
+		if err != nil {
+			s.logger.Errorf("failed to alert user (%s - %s): %v", contactData.FullName, contactData.UserPhone, err)
+			s.sendError(contactData, err, false)
+			continue
+		}
 	}
-
-	return msgStream.SendAndClose(&empty.Empty{})
 }
 
 func (s *messagingServer) alertContact(
-	contactData *location.ContactData,
-) {
+	contactData *messaging.ContactData,
+) error {
 	messageData := map[string]interface{}{
 		"patient_phone":  contactData.PatientPhone,
-		"contact_points": contactData.Count,
+		"contact_points": fmt.Sprint(contactData.Count),
 	}
 
 	data, err := json.Marshal(messageData)
 	if err != nil {
-		s.sendError(contactData, err, false)
-		return
+		return status.Errorf(codes.Internal, "failed to json marshal message: %v", err)
 	}
 
 	messageModel := &services.Message{
 		UserPhone: contactData.UserPhone,
 		Title:     "COVID-19 Alert!",
-		DateTime:  time.Now().Local().String(),
 		Message: fmt.Sprintf(
 			"Hello %s, you have been in contact %d times with a person who has now tested positive for COVID-19",
 			contactData.FullName,
 			contactData.Count,
 		),
 		Sent: true,
-		Type: int8(location.MessageType_ALERT),
+		Type: int8(messaging.MessageType_ALERT),
 		Data: data,
 	}
 
@@ -141,16 +142,14 @@ func (s *messagingServer) alertContact(
 	}()
 	err = tx.Error
 	if err != nil {
-		s.sendError(contactData, err, false)
-		return
+		return services.FailedToBeginTx(err)
 	}
 
 	// Save data to database
 	err = tx.Create(messageModel).Error
 	if err != nil {
 		tx.Rollback()
-		s.sendError(contactData, err, false)
-		return
+		return status.Errorf(codes.Internal, "failed to save message: %v", err)
 	}
 
 	// Send message and notification
@@ -164,22 +163,22 @@ func (s *messagingServer) alertContact(
 	}, 5)
 	if err != nil {
 		tx.Rollback()
-		s.sendError(contactData, err, true)
-		return
+		return status.Errorf(codes.Internal, "failed to send message to user: %v", err)
 	}
 
 	// Commit transaction
 	err = tx.Commit().Error
 	if err != nil {
 		tx.Rollback()
-		s.sendError(contactData, err, false)
-		return
+		return services.FailedToCommitTx(err)
 	}
+
+	return nil
 }
 
 func (s *messagingServer) BroadCastMessage(
-	ctx context.Context, req *location.BroadCastMessageRequest,
-) (*location.BroadCastMessageResponse, error) {
+	ctx context.Context, req *messaging.BroadCastMessageRequest,
+) (*messaging.BroadCastMessageResponse, error) {
 	// Request must not be nil
 	if req == nil {
 		return nil, services.NilRequestError("BroadCastMessageRequest")
@@ -206,16 +205,14 @@ func (s *messagingServer) BroadCastMessage(
 
 	go s.broadCastMessage(req, messageID)
 
-	return &location.BroadCastMessageResponse{
+	return &messaging.BroadCastMessageResponse{
 		BroadcastMessageId: messageID,
 	}, nil
 }
 
 func (s *messagingServer) broadCastMessage(
-	req *location.BroadCastMessageRequest, messageID string,
+	req *messaging.BroadCastMessageRequest, messageID string,
 ) {
-	topics := req.GetTopics()
-
 	// Start transaction
 	tx := s.sqlDB.Begin()
 	defer func() {
@@ -231,13 +228,15 @@ func (s *messagingServer) broadCastMessage(
 
 	for _, filter := range req.Filters {
 		switch filter {
-		case location.BroadCastMessageFilter_ALL:
-		case location.BroadCastMessageFilter_POSITIVES:
+		case messaging.BroadCastMessageFilter_ALL:
+		case messaging.BroadCastMessageFilter_POSITIVES:
 			tx = tx.Where("status = ?", location.Status_POSITIVE)
-		case location.BroadCastMessageFilter_NEGATIVES:
+		case messaging.BroadCastMessageFilter_NEGATIVES:
 			tx = tx.Where("status = ?", location.Status_NEGATIVE)
-		case location.BroadCastMessageFilter_BY_COUNTY:
-			tx = tx.Where("county IN(?)", topics)
+		case messaging.BroadCastMessageFilter_BY_COUNTY:
+			if len(req.GetTopics()) > 0 {
+				tx = tx.Where("county IN(?)", req.GetTopics())
+			}
 		}
 	}
 
@@ -265,7 +264,8 @@ func (s *messagingServer) broadCastMessage(
 		deviceTokens := make([]string, 0, limit)
 
 		// Get device tokens
-		err = tx.Offset(offset).Limit(limit).Select("device_token, phone_number").Find(&usersDB).Error
+		err = tx.Offset(offset).Limit(limit).Select("device_token, phone_number").
+			Find(&usersDB).Error
 		if err != nil {
 			tx.Rollback()
 			s.logger.Errorf("failed to get device token: %v", err)
@@ -284,7 +284,6 @@ func (s *messagingServer) broadCastMessage(
 				UserPhone: userDB.PhoneNumber,
 				Title:     req.Title,
 				Message:   req.Message,
-				DateTime:  time.Now().Local().String(),
 				Data:      bs,
 				Sent:      true,
 				Type:      int8(req.Type),
@@ -318,12 +317,14 @@ func (s *messagingServer) broadCastMessage(
 			tx.Rollback()
 			return
 		}
+
+		offset += len(usersDB)
 	}
 }
 
 func (s *messagingServer) SendMessage(
-	ctx context.Context, msg *location.Message,
-) (*location.SendMessageResponse, error) {
+	ctx context.Context, msg *messaging.Message,
+) (*messaging.SendMessageResponse, error) {
 	// Request must not be nil
 	if msg == nil {
 		return nil, services.NilRequestError("Message")
@@ -347,7 +348,8 @@ func (s *messagingServer) SendMessage(
 
 	// Get user device token
 	userDB := &services.UserModel{}
-	err = s.sqlDB.Table(services.UsersTable).First(userDB, "phone_number=?", msg.UserPhone).Error
+	err = s.sqlDB.Table(services.UsersTable).Select("device_token").
+		First(userDB, "phone_number=?", msg.UserPhone).Error
 	switch {
 	case err == nil:
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -379,7 +381,7 @@ func (s *messagingServer) SendMessage(
 	err = tx.Create(userMsg).Error
 	if err != nil {
 		tx.Rollback()
-		return nil, status.Errorf(codes.Internal, "failed to save user broadcast message: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to save user message: %v", err)
 	}
 
 	data := map[string]interface{}{}
@@ -398,7 +400,7 @@ func (s *messagingServer) SendMessage(
 	}, 5)
 	if err != nil {
 		tx.Rollback()
-		return nil, status.Errorf(codes.Internal, "failed to send user message and notification: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to send message to user: %v", err)
 	}
 
 	err = tx.Commit().Error
@@ -407,23 +409,23 @@ func (s *messagingServer) SendMessage(
 		return nil, services.FailedToCommitTx(err)
 	}
 
-	return &location.SendMessageResponse{
+	return &messaging.SendMessageResponse{
 		MessageId: fmt.Sprint(userMsg.ID),
 	}, nil
 }
 
-func (s *messagingServer) GetMessages(
-	ctx context.Context, getReq *location.GetMessagesRequest,
-) (*location.Messages, error) {
+func (s *messagingServer) ListMessages(
+	ctx context.Context, listReq *messaging.ListMessagesRequest,
+) (*messaging.Messages, error) {
 	// Requst must not be nil
-	if getReq == nil {
-		return nil, services.NilRequestError("GetMessagesRequest")
+	if listReq == nil {
+		return nil, services.NilRequestError("ListMessagesRequest")
 	}
 
 	// Validation
 	var err error
 	switch {
-	case getReq.PhoneNumber == "":
+	case listReq.PhoneNumber == "":
 		err = services.MissingFieldError("user phone")
 	}
 	if err != nil {
@@ -431,17 +433,26 @@ func (s *messagingServer) GetMessages(
 	}
 
 	// Normalize page
-	pageNumber, pageSize := normalizePage(getReq.GetPageToken(), getReq.GetPageSize())
+	pageNumber, pageSize := normalizePage(listReq.GetPageToken(), listReq.GetPageSize())
 	offset := pageNumber*pageSize - pageSize
 
 	messagesDB := make([]*services.Message, 0)
-	err = s.sqlDB.Order("created_at, date_time DESC").Offset(offset).Limit(pageSize).
-		Find(&messagesDB, "user_phone=?", getReq.PhoneNumber).Error
+	db := s.sqlDB.Order("created_at DESC").Offset(offset).Limit(pageSize)
+
+	if len(listReq.FilterType) > 0 {
+		types := make([]int8, 0)
+		for _, msgType := range listReq.FilterType {
+			types = append(types, int8(msgType))
+		}
+		db = db.Where("type IN(?)", types)
+	}
+
+	err = db.Find(&messagesDB, "user_phone=?", listReq.PhoneNumber).Error
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get messages: %v", err)
 	}
 
-	messagesPB := make([]*location.Message, 0, len(messagesDB))
+	messagesPB := make([]*messaging.Message, 0, len(messagesDB))
 
 	for _, messageDB := range messagesDB {
 		messagePB, err := getMessagePB(messageDB)
@@ -452,7 +463,7 @@ func (s *messagingServer) GetMessages(
 		messagesPB = append(messagesPB, messagePB)
 	}
 
-	return &location.Messages{
+	return &messaging.Messages{
 		Messages: messagesPB,
 	}, nil
 }
@@ -472,7 +483,7 @@ func normalizePage(pageToken, pageSize int32) (int, int) {
 	return int(pageToken), int(pageSize)
 }
 
-func (s *messagingServer) sendError(payload *location.ContactData, err error, sending bool) {
+func (s *messagingServer) sendError(payload *messaging.ContactData, err error, sending bool) {
 	select {
 	case <-time.After(10 * time.Second):
 	case s.failedSend <- &fcmErrFDetails{
@@ -483,12 +494,11 @@ func (s *messagingServer) sendError(payload *location.ContactData, err error, se
 	}
 }
 
-func getMessageDB(messagePB *location.Message) (*services.Message, error) {
+func getMessageDB(messagePB *messaging.Message) (*services.Message, error) {
 	messageDB := &services.Message{
 		UserPhone: messagePB.UserPhone,
 		Title:     messagePB.Title,
 		Message:   messagePB.Notification,
-		DateTime:  messagePB.DateTime,
 		Sent:      messagePB.Sent,
 		Type:      int8(messagePB.Type),
 	}
@@ -504,15 +514,15 @@ func getMessageDB(messagePB *location.Message) (*services.Message, error) {
 	return messageDB, nil
 }
 
-func getMessagePB(messageDB *services.Message) (*location.Message, error) {
-	messagePB := &location.Message{
+func getMessagePB(messageDB *services.Message) (*messaging.Message, error) {
+	messagePB := &messaging.Message{
 		MessageId:    fmt.Sprint(messageDB.ID),
 		UserPhone:    messageDB.UserPhone,
 		Title:        messageDB.Title,
 		Notification: messageDB.Message,
-		DateTime:     messageDB.DateTime,
+		Timestamp:    messageDB.CreatedAt.Unix(),
 		Sent:         messageDB.Sent,
-		Type:         location.MessageType(messageDB.Type),
+		Type:         messaging.MessageType(messageDB.Type),
 	}
 
 	if len(messageDB.Data) != 0 {
