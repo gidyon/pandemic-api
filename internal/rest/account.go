@@ -1,15 +1,21 @@
 package rest
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gidyon/pandemic-api/internal/services"
+	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gidyon/pandemic-api/internal/auth"
+	http_error "github.com/gidyon/pandemic-api/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
@@ -52,6 +58,7 @@ func RegisterAccountAPI(router *httprouter.Router, sqlDB *gorm.DB) {
 
 	router.GET("/rest/v1/accounts", acc.ListAccounts)
 	router.GET("/rest/v1/accounts/:accountId", acc.GetAccount)
+	router.POST("/rest/v1/accounts/file", acc.AddUsersFromFile)
 	router.POST("/rest/v1/accounts", acc.CreateAccount)
 	router.POST("/rest/v1/accounts/login", acc.Login)
 	router.PUT("/rest/v1/accounts/:accountId", acc.UpdateAccount)
@@ -61,24 +68,19 @@ func RegisterAccountAPI(router *httprouter.Router, sqlDB *gorm.DB) {
 
 // Account is an entity performing actions
 type Account struct {
-	AccountID       string     `json:"account_id,omitempty" gorm:"primary_key;type:varchar(50);not null"`
-	NationalID      string     `json:"national_id,omitempty" gorm:"index:query_index;type:varchar(15);unique_index;not null"`
-	FullName        string     `json:"full_name,omitempty" gorm:"type:varchar(50);not null"`
-	Email           string     `json:"email,omitempty" gorm:"index:query_index;type:varchar(50);unique_index;not null"`
-	Phone           string     `json:"phone,omitempty" gorm:"index:query_index;type:varchar(15);unique_index;not null"`
-	County          string     `json:"county,omitempty" gorm:"type:varchar(50);not null"`
-	SubCounty       string     `json:"sub_county,omitempty" gorm:"type:varchar(50);not null"`
-	Constituency    string     `json:"constituency,omitempty" gorm:"type:varchar(50);not null"`
-	Ward            string     `json:"ward,omitempty" gorm:"type:varchar(50);not null"`
-	Residence       string     `json:"residence,omitempty" gorm:"type:varchar(50);not null"`
-	Profession      string     `json:"profession,omitempty" gorm:"type:varchar(50);not null"`
-	InstitutionName string     `json:"institution_name,omitempty" gorm:"type:varchar(50);not null"`
-	Gender          string     `json:"gender,omitempty" gorm:"type:varchar(10);default:'unknown'"`
-	Verified        bool       `json:"verified" gorm:"type:tinyint(1);default:0"`
-	Group           string     `json:"group,omitempty" gorm:"type:varchar(50);not null"`
-	Password        string     `json:"-" gorm:"type:text"`
-	CreatedAt       time.Time  `json:"-"`
-	DeletedAt       *time.Time `json:"-"`
+	AccountID  string     `json:"account_id,omitempty" gorm:"primary_key;type:varchar(50);not null"`
+	NationalID string     `json:"national_id,omitempty" gorm:"index:query_index;type:varchar(15);unique_index;not null"`
+	FullName   string     `json:"full_name,omitempty" gorm:"type:varchar(50);not null"`
+	Email      string     `json:"email,omitempty" gorm:"index:query_index;type:varchar(50);unique_index;not null"`
+	Phone      string     `json:"phone,omitempty" gorm:"index:query_index;type:varchar(15);unique_index;not null"`
+	County     string     `json:"county,omitempty" gorm:"type:varchar(50);not null"`
+	Profession string     `json:"profession,omitempty" gorm:"type:varchar(50);not null"`
+	Gender     string     `json:"gender,omitempty" gorm:"type:varchar(10);default:'unknown'"`
+	Verified   bool       `json:"verified" gorm:"type:tinyint(1);default:0"`
+	Group      string     `json:"group,omitempty" gorm:"type:varchar(50);not null"`
+	Password   string     `json:"password,omitempty" gorm:"type:text"`
+	CreatedAt  time.Time  `json:"	-"`
+	DeletedAt  *time.Time `json:"-"`
 }
 
 // BeforeCreate is a hook that is set before creating object
@@ -103,14 +105,8 @@ func (accountAPI *Account) validate() error {
 		err = errors.New("email or phone is required")
 	case strings.TrimSpace(accountAPI.County) == "":
 		err = errors.New("county is required")
-	case strings.TrimSpace(accountAPI.SubCounty) == "":
-		err = errors.New("sub county is required")
-	case strings.TrimSpace(accountAPI.Constituency) == "":
-		err = errors.New("constituency is required")
-	case strings.TrimSpace(accountAPI.Ward) == "":
-		err = errors.New("ward is required")
-	case strings.TrimSpace(accountAPI.Residence) == "":
-		err = errors.New("residence is required")
+	case strings.TrimSpace(accountAPI.Password) == "":
+		err = errors.New("password is required")
 	}
 
 	return err
@@ -136,14 +132,14 @@ func (accountAPI *accountAPI) CreateAccount(w http.ResponseWriter, r *http.Reque
 	acc := &Account{}
 	err := json.NewDecoder(r.Body).Decode(acc)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to decode request", err, http.StatusBadRequest))
 		return
 	}
 
 	// Validation
 	err = acc.validate()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New(err.Error(), err, http.StatusBadRequest))
 		return
 	}
 
@@ -153,7 +149,7 @@ func (accountAPI *accountAPI) CreateAccount(w http.ResponseWriter, r *http.Reque
 	// Hash password
 	acc.Password, err = genHash(acc.Password)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to generate password hash", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -171,19 +167,18 @@ func (accountAPI *accountAPI) CreateAccount(w http.ResponseWriter, r *http.Reque
 			errMsg = fmt.Sprintf("Account with email %s exists", acc.Email)
 		case strings.Contains(errStr, "phone"):
 			errMsg = fmt.Sprintf("Account with phone %s exists", acc.Phone)
-
 		}
-		http.Error(w, errMsg, http.StatusForbidden)
+		http_error.Write(w, http_error.New(errMsg, err, http.StatusForbidden))
 		return
 	default:
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http_error.Write(w, http_error.New("failed to add user to database", err, http.StatusInternalServerError))
 		return
 	}
 
 	// Write acc id to response
 	err = json.NewEncoder(w).Encode(map[string]string{"account_id": acc.AccountID})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to json encode response", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -192,7 +187,8 @@ func (accountAPI *accountAPI) GetAccount(w http.ResponseWriter, r *http.Request,
 	// Get acc id
 	accountID := p.ByName("accountId")
 	if strings.TrimSpace(accountID) == "" {
-		http.Error(w, "missing account id", http.StatusBadRequest)
+		errMsg := "missing account id"
+		http_error.Write(w, http_error.New(errMsg, nil, http.StatusBadRequest))
 		return
 	}
 	acc := &Account{}
@@ -202,17 +198,17 @@ func (accountAPI *accountAPI) GetAccount(w http.ResponseWriter, r *http.Request,
 	switch {
 	case err == nil:
 	case gorm.IsRecordNotFoundError(err):
-		http.Error(w, "account not found", http.StatusBadRequest)
+		http_error.Write(w, http_error.New("account not found", err, http.StatusBadRequest))
 		return
 	default:
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to get account from db", err, http.StatusInternalServerError))
 		return
 	}
 
 	// Write to connection
 	err = json.NewEncoder(w).Encode(acc)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to json encode response", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -234,7 +230,7 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 	login := &loginRequest{}
 	err := json.NewDecoder(r.Body).Decode(login)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -246,7 +242,7 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 		err = errors.New("missing password")
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New(err.Error(), err, http.StatusBadRequest))
 		return
 	}
 
@@ -256,17 +252,17 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 	switch {
 	case err == nil:
 	case gorm.IsRecordNotFoundError(err):
-		http.Error(w, "account does not exist", http.StatusBadRequest)
+		http_error.Write(w, http_error.New("account not found", err, http.StatusBadRequest))
 		return
 	default:
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to get account from db", err, http.StatusInternalServerError))
 		return
 	}
 
 	// Compare password
 	err = compareHash(acc.Password, login.Password)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("incorrect password", err, http.StatusBadRequest))
 		return
 	}
 
@@ -279,7 +275,7 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 		Group:        acc.Group,
 	}, acc.Group, 0)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to generate token", err, http.StatusBadRequest))
 		return
 	}
 
@@ -291,7 +287,7 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 		Verified:  acc.Verified,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to json encode response", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -299,7 +295,7 @@ func (accountAPI *accountAPI) Login(w http.ResponseWriter, r *http.Request, _ ht
 func (accountAPI *accountAPI) UpdateAccount(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	accountID := p.ByName("accountId")
 	if strings.TrimSpace(accountID) == "" {
-		http.Error(w, "Missing account id", http.StatusBadRequest)
+		http_error.Write(w, http_error.New("missing account id", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -307,7 +303,7 @@ func (accountAPI *accountAPI) UpdateAccount(w http.ResponseWriter, r *http.Reque
 	acc := &Account{}
 	err := json.NewDecoder(r.Body).Decode(acc)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -331,19 +327,18 @@ func (accountAPI *accountAPI) UpdateAccount(w http.ResponseWriter, r *http.Reque
 			errMsg = fmt.Sprintf("Account with email %s exists", acc.Email)
 		case strings.Contains(errStr, "phone"):
 			errMsg = fmt.Sprintf("Account with phone %s exists", acc.Phone)
-
 		}
-		http.Error(w, errMsg, http.StatusForbidden)
+		http_error.Write(w, http_error.New(errMsg, err, http.StatusBadRequest))
 		return
 	default:
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to update account", err, http.StatusForbidden))
 		return
 	}
 
 	// Write acc id to response
 	err = json.NewEncoder(w).Encode(map[string]string{"account_id": accountID})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to json encode response", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -371,7 +366,7 @@ func (accountAPI *accountAPI) ListAccounts(w http.ResponseWriter, r *http.Reques
 	// Pagination
 	ps, pn, err := getPaginationData(query.Get("page_size"), query.Get("page_number"))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to retrieve pagination data", err, http.StatusBadRequest))
 		return
 	}
 
@@ -405,14 +400,14 @@ func (accountAPI *accountAPI) ListAccounts(w http.ResponseWriter, r *http.Reques
 	accounts := make([]*Account, 0, ps)
 	err = db.Find(&accounts).Error
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed get accounts", err, http.StatusInternalServerError))
 		return
 	}
 
 	// Write response back
 	err = json.NewEncoder(w).Encode(accounts)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to json encode response", err, http.StatusInternalServerError))
 		return
 	}
 }
@@ -425,7 +420,7 @@ type changePassword struct {
 func (accountAPI *accountAPI) ChangePassword(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	accountID := p.ByName("accountId")
 	if strings.TrimSpace(accountID) == "" {
-		http.Error(w, "Missing account id", http.StatusBadRequest)
+		http_error.Write(w, http_error.New("missing account id", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -433,7 +428,7 @@ func (accountAPI *accountAPI) ChangePassword(w http.ResponseWriter, r *http.Requ
 	changePass := &changePassword{}
 	err := json.NewDecoder(r.Body).Decode(changePass)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to decode request", err, http.StatusBadRequest))
 		return
 	}
 
@@ -447,14 +442,14 @@ func (accountAPI *accountAPI) ChangePassword(w http.ResponseWriter, r *http.Requ
 		err = errors.New("password do not match")
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New(err.Error(), err, http.StatusBadRequest))
 		return
 	}
 
 	// Hash password
 	changePass.ConfirmPassword, err = genHash(changePass.ConfirmPassword)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http_error.Write(w, http_error.New("failed to generate password hash", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -462,12 +457,12 @@ func (accountAPI *accountAPI) ChangePassword(w http.ResponseWriter, r *http.Requ
 	db := accountAPI.sqlDB.Table(accountsTable).Unscoped().Where("account_id=?", accountID).
 		Update("password", changePass.ConfirmPassword)
 	switch {
-	case db.RowsAffected == 0:
-		http.Error(w, "Account does not exist", http.StatusForbidden)
-		return
 	case db.Error == nil:
+	case db.RowsAffected == 0:
+		http_error.Write(w, http_error.New("Aaccount does not exist", err, http.StatusNotFound))
+		return
 	case db.Error != nil:
-		http.Error(w, db.Error.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to update", err, http.StatusInternalServerError))
 		return
 	}
 
@@ -478,7 +473,7 @@ func (accountAPI *accountAPI) ChangePassword(w http.ResponseWriter, r *http.Requ
 func (accountAPI *accountAPI) VerifyAccount(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	accountID := p.ByName("accountId")
 	if strings.TrimSpace(accountID) == "" {
-		http.Error(w, "Missing account id", http.StatusBadRequest)
+		http_error.Write(w, http_error.New("missing account id", nil, http.StatusBadRequest))
 		return
 	}
 
@@ -488,10 +483,121 @@ func (accountAPI *accountAPI) VerifyAccount(w http.ResponseWriter, r *http.Reque
 	switch {
 	case db.Error == nil:
 	case db.Error != nil:
-		http.Error(w, db.Error.Error(), http.StatusForbidden)
+		http_error.Write(w, http_error.New("failed to verify account", db.Error, http.StatusInternalServerError))
 		return
 	}
 
 	// Write some response
 	w.Write([]byte("verified"))
+}
+
+const (
+	maxUploadSize       = int64(8 * 1024 * 1024)
+	urlQueryKeyFormFile = "file"
+)
+
+func (accountAPI *accountAPI) AddUsersFromFile(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// validate size
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	err := r.ParseMultipartForm(maxUploadSize)
+	if err != nil {
+		http_error.Write(w, http_error.New("failed to parse multi part form", err, http.StatusInternalServerError))
+		return
+	}
+
+	// get file from request
+	file, _, err := r.FormFile(urlQueryKeyFormFile)
+	if err != nil {
+		http_error.Write(w, http_error.New("failed to retrieve form", err, http.StatusInternalServerError))
+		return
+	}
+	defer file.Close()
+
+	// read file contents
+	bs, err := ioutil.ReadAll(file)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// detect content-type
+	ctype := http.DetectContentType(bs)
+
+	if ctype != "text/csv" {
+		http_error.Write(w, http_error.New("only csv file is supported", nil, http.StatusBadRequest))
+		return
+	}
+
+	tx := accountAPI.sqlDB.Begin()
+	defer func() {
+		if err := recover(); err != nil {
+			tx.Rollback()
+		}
+	}()
+	if tx.Error != nil {
+		http_error.Write(w, http_error.New("failed to begin transaction", err, http.StatusInternalServerError))
+		return
+	}
+
+	usersReader := csv.NewReader(file)
+	usersReader.Comment = '#'
+
+	for {
+		record, err := usersReader.Read()
+		if err != io.EOF {
+			break
+		}
+		if err != nil {
+			http_error.Write(w, http_error.New("failed to read from csv file", err, http.StatusInternalServerError))
+			return
+		}
+
+		fullName := record[0]
+		phoneNumber := record[1]
+		county := record[2]
+
+		// Save user in database
+		userDB := &services.UserModel{
+			PhoneNumber: phoneNumber,
+			FullName:    fullName,
+			County:      county,
+			Status:      int8(location.Status_POSITIVE),
+			DeviceToken: "NA",
+		}
+
+		// If user already exists, performs an update
+		alreadyExists := !accountAPI.sqlDB.
+			First(&services.UserModel{}, "phone_number=?", phoneNumber).RecordNotFound()
+
+		if alreadyExists {
+			err = accountAPI.sqlDB.Table(services.UsersTable).Where("phone_number=?", phoneNumber).
+				Updates(userDB).Error
+			switch {
+			case err == nil:
+			default:
+				http_error.Write(w, http_error.New("failed to save user", err, http.StatusInternalServerError))
+				tx.Rollback()
+				return
+			}
+		} else {
+			// Save user
+			err = accountAPI.sqlDB.Save(userDB).Error
+			switch {
+			case err == nil:
+			default:
+				http_error.Write(w, http_error.New("failed to update user", err, http.StatusInternalServerError))
+				tx.Rollback()
+				return
+			}
+		}
+	}
+
+	err = tx.Commit().Error
+	if err != nil {
+		http_error.Write(w, http_error.New("failed to commit transaction", err, http.StatusInternalServerError))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("all records saved successffulyy"))
 }

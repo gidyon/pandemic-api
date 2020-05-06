@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	http_error "github.com/gidyon/pandemic-api/pkg/errors"
 	"github.com/jinzhu/gorm"
 	"github.com/julienschmidt/httprouter"
 	"math/rand"
@@ -20,11 +21,12 @@ import (
 const contactGroup = "CONTACTS"
 
 type contactAPI struct {
-	rootDir    string
-	filePrefix string
-	revision   int
-	mu         *sync.RWMutex
-	contacts   map[int]*ContactData
+	rootDir     string
+	filePrefix  string
+	revision    int
+	mu          *sync.RWMutex
+	contacts    map[int]*ContactData
+	countiesMap map[string]int
 }
 
 // RegisterContactAPI registers http router for the contact API
@@ -44,11 +46,12 @@ func RegisterContactAPI(router *httprouter.Router, opt *Options) {
 	handleError(err)
 
 	c := &contactAPI{
-		rootDir:    opt.RootDir,
-		filePrefix: opt.FilePrefix,
-		revision:   opt.Revision,
-		mu:         &sync.RWMutex{},
-		contacts:   make(map[int]*ContactData, 0),
+		rootDir:     opt.RootDir,
+		filePrefix:  opt.FilePrefix,
+		revision:    opt.Revision,
+		mu:          &sync.RWMutex{},
+		contacts:    make(map[int]*ContactData, 0),
+		countiesMap: make(map[string]int, 0),
 	}
 
 	// read from file
@@ -59,10 +62,16 @@ func RegisterContactAPI(router *httprouter.Router, opt *Options) {
 	// update data from file
 	contact := &ContactData{}
 	err = json.NewDecoder(file).Decode(contact)
+	handleError(err)
 
 	// get json
 	bs, err := json.Marshal(contact)
 	handleError(err)
+
+	// Update contacts map
+	for index, countyHotline := range contact.CountiesHotlines {
+		c.countiesMap[countyHotline.County] = index
+	}
 
 	// add the contact only if it doesn't exist
 	_, err = revisionManager.Get(contactGroup, contact.Revision)
@@ -107,6 +116,8 @@ func RegisterContactAPI(router *httprouter.Router, opt *Options) {
 	// Update endpoints
 	router.GET("/rest/v1/contacts", c.GetContact)
 	router.PUT("/rest/v1/contacts", c.UpdateContact)
+	router.GET("/rest/v1/contacts/hotlines/nearest", c.GetNearestHotlines)
+	router.GET("/rest/v1/contacts/hotlines/county", c.GetCountyHotlines)
 }
 
 // ContactData contains contact data
@@ -216,4 +227,95 @@ func (contact *contactAPI) UpdateContact(w http.ResponseWriter, r *http.Request,
 	}
 
 	w.Write([]byte("contacts scheduled for update"))
+}
+
+// GetCountyHotlines fetches hotlines contacts for the county
+func (contact *contactAPI) GetCountyHotlines(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// Validation
+	county := r.URL.Query().Get("county")
+	if county == "" {
+		http_error.Write(w, http_error.New("county is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	contact.mu.RLock()
+	defer contact.mu.RUnlock()
+
+	hotlines := make([]string, 0)
+
+	index, ok := contact.countiesMap[county]
+	if !ok {
+		for _, generalHotline := range contact.contacts[contact.revision].GeneralHotlines {
+			hotlines = append(hotlines, fmt.Sprintf("%s - %s", generalHotline.Number, generalHotline.Description))
+		}
+
+		err := json.NewEncoder(w).Encode(hotlines)
+		if err != nil {
+			http_error.Write(w, http_error.New("failed to json encode", err, http.StatusBadRequest))
+			return
+		}
+
+		return
+	}
+
+	for _, hotline := range contact.contacts[contact.revision].CountiesHotlines[index].Hotlines {
+		hotlines = append(hotlines, hotline)
+	}
+
+	err := json.NewEncoder(w).Encode(hotlines)
+	if err != nil {
+		http_error.Write(w, http_error.New("failed to json encode", err, http.StatusBadRequest))
+		return
+	}
+}
+
+// GetNearestHotlines fetches nearest hotlines around the user
+func (contact *contactAPI) GetNearestHotlines(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	// Validation
+	county := r.URL.Query().Get("county")
+	longitude := r.URL.Query().Get("longitude")
+	latitude := r.URL.Query().Get("latitude")
+
+	var err error
+	switch {
+	case county == "":
+		http_error.Write(w, http_error.New("county is required", nil, http.StatusBadRequest))
+		return
+	case longitude == "":
+		http_error.Write(w, http_error.New("longitude is required", nil, http.StatusBadRequest))
+		return
+	case latitude == "":
+		http_error.Write(w, http_error.New("latitude is required", nil, http.StatusBadRequest))
+		return
+	}
+
+	contact.mu.RLock()
+	defer contact.mu.RUnlock()
+
+	hotlines := make([]string, 0)
+
+	index, ok := contact.countiesMap[county]
+	if !ok {
+		for _, generalHotline := range contact.contacts[contact.revision].GeneralHotlines {
+			hotlines = append(hotlines, fmt.Sprintf("%s - %s", generalHotline.Number, generalHotline.Description))
+		}
+
+		err := json.NewEncoder(w).Encode(hotlines)
+		if err != nil {
+			http_error.Write(w, http_error.New("failed to json encode hotlines", err, http.StatusBadRequest))
+			return
+		}
+
+		return
+	}
+
+	for _, hotline := range contact.contacts[contact.revision].CountiesHotlines[index].Hotlines {
+		hotlines = append(hotlines, hotline)
+	}
+
+	err = json.NewEncoder(w).Encode(hotlines)
+	if err != nil {
+		http_error.Write(w, http_error.New("failed to json encode", err, http.StatusBadRequest))
+		return
+	}
 }
