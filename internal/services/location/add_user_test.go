@@ -6,6 +6,7 @@ import (
 	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"math/rand"
 )
 
 func fakeUser() *location.User {
@@ -13,7 +14,7 @@ func fakeUser() *location.User {
 		PhoneNumber: randomdata.PhoneNumber()[:15],
 		FullName:    randomdata.FullName(randomdata.Female),
 		County:      randomdata.State(randomdata.Small),
-		Status:      location.Status_UNKNOWN,
+		Status:      location.Status(rand.Intn(len(location.Status_value))),
 		DeviceToken: randomdata.MacAddress(),
 	}
 }
@@ -62,13 +63,6 @@ var _ = Describe("Adding a user into the database #add", func() {
 		})
 		It("should fail if county is missing ", func() {
 			addReq.User.County = ""
-			addRes, err := LocationAPI.AddUser(ctx, addReq)
-			Expect(err).Should(HaveOccurred())
-			Expect(status.Code(err)).Should(Equal(codes.InvalidArgument))
-			Expect(addRes).Should(BeNil())
-		})
-		It("should fail if device token is missing", func() {
-			addReq.User.DeviceToken = ""
 			addRes, err := LocationAPI.AddUser(ctx, addReq)
 			Expect(err).Should(HaveOccurred())
 			Expect(status.Code(err)).Should(Equal(codes.InvalidArgument))

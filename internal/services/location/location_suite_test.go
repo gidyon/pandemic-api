@@ -3,8 +3,14 @@ package location
 import (
 	"context"
 	"fmt"
+	"github.com/gidyon/micros"
+	"github.com/gidyon/pandemic-api/internal/services/location/mocks"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 	"github.com/go-redis/redis"
+	"github.com/stretchr/testify/mock"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"github.com/jinzhu/gorm"
@@ -47,10 +53,21 @@ var _ = BeforeSuite(func() {
 		Addr: redisAddress,
 	})
 
+	// Create mock for messaging server
+	messagingClient := &mocks.MessagingClientMock{}
+	messagingClient.On("BroadCastMessage", mock.Anything, mock.Anything).
+		Return(&messaging.BroadCastMessageResponse{}, nil)
+	messagingClient.On("SendMessage", mock.Anything, mock.Anything).
+		Return(&messaging.SendMessageResponse{}, nil)
+
 	opt := &Options{
-		LogsDB:   db,
-		EventsDB: redisDB,
+		LogsDB:          db,
+		EventsDB:        redisDB,
+		MessagingClient: messagingClient,
+		Logger:          micros.NewLogger("location"),
 	}
+
+	rand.Seed(time.Now().UnixNano())
 
 	// Create location server
 	LocationAPI, err = NewLocationTracing(ctx, opt)
@@ -61,12 +78,25 @@ var _ = BeforeSuite(func() {
 	Expect(ok).Should(BeTrue())
 
 	// Pasing incorrect payload
+	_, err = NewLocationTracing(nil, opt)
+	Expect(err).Should(HaveOccurred())
+
 	opt.EventsDB = nil
 	_, err = NewLocationTracing(ctx, opt)
 	Expect(err).Should(HaveOccurred())
 
 	opt.EventsDB = redisDB
 	opt.LogsDB = nil
+	_, err = NewLocationTracing(ctx, opt)
+	Expect(err).Should(HaveOccurred())
+
+	opt.LogsDB = db
+	opt.MessagingClient = nil
+	_, err = NewLocationTracing(ctx, opt)
+	Expect(err).Should(HaveOccurred())
+
+	opt.MessagingClient = messagingClient
+	opt.Logger = nil
 	_, err = NewLocationTracing(ctx, opt)
 	Expect(err).Should(HaveOccurred())
 })

@@ -91,13 +91,6 @@ var _ = Describe("Sending user location #sendloc", func() {
 			Expect(status.Code(err)).Should(Equal(codes.InvalidArgument))
 			Expect(sendres).Should(BeNil())
 		})
-		It("should fail when location time id is missing", func() {
-			sendReq.Location.TimeId = ""
-			sendres, err := LocationAPI.SendLocation(ctx, sendReq)
-			Expect(err).Should(HaveOccurred())
-			Expect(status.Code(err)).Should(Equal(codes.InvalidArgument))
-			Expect(sendres).Should(BeNil())
-		})
 	})
 
 	When("Sending location with well-formed request", func() {
