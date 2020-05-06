@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pandemic-api-pusher
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pandemic-api-pusher
+  template:
+    metadata:
+      labels:
+        app: pandemic-api-pusher
+    spec:
+      containers:
+      - name: pandemic-api-pusher
+        image: gidyon/pandemic-api-pusher:v0.14
+        args: ["--config-file", "/app/configs/config.yml", "--interval-minutes", "1"]
+        imagePullPolicy: Always
+        env:
+        - name: FCM_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fcm-creds
+              key: server-key
+        volumeMounts:
+          - name: app-config
+            mountPath: /app/configs/
+            readOnly: true
+          - name: mysql-creds
+            mountPath: /app/secrets/mysql/
+            readOnly: true
+      volumes:
+      - name: app-config
+        configMap:
+          name: pusher-v1
+      - name: mysql-creds
+        secret:
+          secretName: mysql-credentials
+
+---
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "pandemic-api-pusher-hpa"
+  labels:
+    app: "pandemic-api-pusher"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "pandemic-api-pusher"
+    apiVersion: "apps/v1"
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80
