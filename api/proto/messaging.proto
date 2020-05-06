@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package covitrace;
+
+option go_package="messaging";
+
+import "google/protobuf/empty.proto";
+import "google/longrunning/operations.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-swagger/options/annotations.proto";
+
+
+// ContactData contains locational contacts infomation
+message ContactData {
+    int32 count = 1;
+    string user_phone = 2;
+    string full_name = 3;
+    string patient_phone = 4;
+    string device_token = 5;
+    repeated ContactPoint contact_points = 6;
+}
+
+// BroadCastMessageResponse is response after a message has been broadcasted containing the broadcast id
+message BroadCastMessageResponse {
+    string broadcast_message_id = 1;
+}
+
+// ContactPoint is a geographic contact point at a particular time
+message ContactPoint {
+    string geo_fence_id = 1;
+    string time_id = 2;
+}
+
+// BroadCastMessageFilter is type filter for broadcast messages
+enum BroadCastMessageFilter {
+    ALL = 0;
+    BY_COUNTY = 1;
+    POSITIVES = 2;
+    NEGATIVES = 3;
+}
+
+// BroadCastMessageRequest is request to broadcast message to users
+message BroadCastMessageRequest {
+    string title = 1;
+    string message = 2;
+    MessageType type = 3;
+    repeated BroadCastMessageFilter filters = 4;
+    repeated string topics = 5;
+    map<string, string> payload = 6;
+}
+
+// MessageType is category of a message
+enum MessageType {
+    ANY = 0;
+    ALERT = 1;
+    WARNING = 2;
+    INFO = 3;
+}
+
+// Message is a message payload
+message Message {
+    string message_id = 1;
+    string user_phone = 2;
+    string title = 3;
+    string notification = 4;
+    int64 timestamp = 5;
+    bool sent = 6;
+    MessageType type = 7;
+    map<string, string> data = 8;
+}
+
+// SendMessageResponse is response after sending message contains message id
+message SendMessageResponse {
+    string message_id = 1;
+}
+
+// ListMessagesRequest is request to get user messages
+message ListMessagesRequest {
+    string phone_number = 1;
+    int32 page_token = 2;
+    int32 page_size = 3;
+    repeated MessageType filter_type = 4;
+}
+
+// Messages is a collection of user messages
+message Messages {
+    repeated Message messages = 1;
+}
+
+// Sends messages to devices and destinations
+service Messaging {
+    // Alerts on possible contact points with a positive patient
+    rpc AlertContacts (stream ContactData) returns (google.protobuf.Empty) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/alert"
+            body: "*"
+        };
+    };
+
+    // Broadcasts a message
+    rpc BroadCastMessage (BroadCastMessageRequest) returns (BroadCastMessageResponse) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/broadcast"
+            body: "*"
+        };
+    };
+
+    // Sends message to a single destination
+    rpc SendMessage (Message) returns (SendMessageResponse) {
+        // Maps to HTTP POST
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            post: "/api/v1/messaging/send"
+            body: "*"
+        };
+    };
+
+    // Retrieves user messages
+    rpc ListMessages (ListMessagesRequest) returns (Messages) {
+        // Maps to HTTP GET
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            get: "/api/v1/messaging/messages/{phone_number}"
+        };
+    };
+}
