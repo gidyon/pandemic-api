@@ -3,11 +3,12 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"github.com/gidyon/pandemic-api/pkg/api/contact_tracing"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
+	"github.com/golang/protobuf/ptypes/empty"
 	"testing"
 
 	"github.com/go-redis/redis"
-
-	"github.com/gidyon/pandemic-api/pkg/api/location"
 
 	"github.com/gidyon/micros"
 	"github.com/gidyon/pandemic-api/internal/services/tracing/mocks"
@@ -24,12 +25,13 @@ func TestTracing(t *testing.T) {
 
 var (
 	TracingServer *tracingAPIServer
-	TracingAPI    location.ContactTracingServer
+	TracingAPI    contact_tracing.ContactTracingServer
 )
 
+// 192.168.100.10
 const (
-	redisAddress = "192.168.100.10:6379"
-	dbAddress    = "192.168.100.10:3306"
+	redisAddress = "localhost:6379"
+	dbAddress    = "localhost:3306"
 	schema       = "fightcovid19"
 )
 
@@ -54,15 +56,17 @@ var _ = BeforeSuite(func() {
 	alertStream := &mocks.AlertContactsStream{}
 	alertStream.On("Send", mock.Anything, mock.Anything).
 		Return(nil)
+	alertStream.On("CloseAndRecv").Return(&empty.Empty{}, nil)
+	alertStream.On("CloseSend").Return(&empty.Empty{}, nil)
 
 	// Create mock for messaging server
 	messagingClient := &mocks.MessagingClientMock{}
 	messagingClient.On("AlertContacts", mock.Anything, mock.Anything).
 		Return(alertStream, nil)
 	messagingClient.On("BroadCastMessage", mock.Anything, mock.Anything).
-		Return(&location.BroadCastMessageResponse{}, nil)
+		Return(&messaging.BroadCastMessageResponse{}, nil)
 	messagingClient.On("SendMessage", mock.Anything, mock.Anything).
-		Return(&location.SendMessageResponse{}, nil)
+		Return(&messaging.SendMessageResponse{}, nil)
 	messagingClient.On("Send", mock.Anything, mock.Anything).
 		Return(nil)
 
@@ -203,7 +207,6 @@ var BeZero = gomega.BeZero
 var ContainElement = gomega.ContainElement
 var BeElementOf = gomega.BeElementOf
 var ConsistOf = gomega.ConsistOf
-var ContainElements = gomega.ContainElements
 var HaveKey = gomega.HaveKey
 var HaveKeyWithValue = gomega.HaveKeyWithValue
 var BeNumerically = gomega.BeNumerically
@@ -213,7 +216,6 @@ var Panic = gomega.Panic
 var BeAnExistingFile = gomega.BeAnExistingFile
 var BeARegularFile = gomega.BeARegularFile
 var BeADirectory = gomega.BeADirectory
-var HaveHTTPStatus = gomega.HaveHTTPStatus
 var And = gomega.And
 var SatisfyAll = gomega.SatisfyAll
 var Or = gomega.Or
