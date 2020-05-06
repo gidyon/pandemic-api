@@ -26,11 +26,27 @@ run_tracing:
 
 run_location:
 	cd cmd/location && go build && ./location -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/location_dev.yml
+
+run_rest:
+	cd cmd/restful && go build && ROOT_DIR=/home/gideon/go/src/github.com/gidyon/pandemic-api/api/json ./restful -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/restful_dev.yml
+
 # ============================================================================== 
 proto_compile_location:
-	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/location locationv2.proto &&\
-	protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/location locationv2.proto &&\
-	protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) locationv2.proto
+	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/location location.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/location location.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) location.proto
+
+proto_compile_tracing:
+	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/contact_tracing contact.tracing.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/contact_tracing contact.tracing.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) contact.tracing.proto
+
+proto_compile_messaging:
+	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/messaging messaging.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --grpc-gateway_out=logtostderr=true:$(API_OUT_PATH)/messaging messaging.proto &&\
+	protoc -I=$(API_IN_PATH) -I=third_party --swagger_out=logtostderr=true:$(SWAGGER_DOC_OUT_PATH) messaging.proto
+
+proto_compile: proto_compile_location proto_compile_tracing proto_compile_messaging
 
 compile_gateway:
 	go build -i -v -o gateway $(SERVICE_PKG_BUILD)
