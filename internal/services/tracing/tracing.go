@@ -124,7 +124,7 @@ func (t *tracingAPIServer) TraceUserLocations(
 
 	// Get user from db
 	userDB := &services.UserModel{}
-	err = t.sqlDB.Select("status, full_name, phone_number, county").
+	err = t.sqlDB.Select("status, full_name, phone_number, county, id").
 		First(userDB, "phone_number=?", traceReq.PhoneNumber).Error
 	switch {
 	case err == nil:
