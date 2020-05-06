@@ -1,0 +1,314 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "messaging.proto",
+    "version": "version not set"
+  },
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/api/v1/messaging/alert": {
+      "post": {
+        "summary": "Alerts on possible contact points with a positive patient",
+        "operationId": "AlertContacts",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": " (streaming inputs)",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceContactData"
+            }
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    },
+    "/api/v1/messaging/broadcast": {
+      "post": {
+        "summary": "Broadcasts a message",
+        "operationId": "BroadCastMessage",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceBroadCastMessageResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceBroadCastMessageRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    },
+    "/api/v1/messaging/messages/{phone_number}": {
+      "get": {
+        "summary": "Retrieves user messages",
+        "operationId": "ListMessages",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceMessages"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "filter_type",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ANY",
+                "ALERT",
+                "WARNING",
+                "INFO"
+              ]
+            },
+            "collectionFormat": "multi"
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    },
+    "/api/v1/messaging/send": {
+      "post": {
+        "summary": "Sends message to a single destination",
+        "operationId": "SendMessage",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceSendMessageResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceMessage"
+            }
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "covitraceBroadCastMessageFilter": {
+      "type": "string",
+      "enum": [
+        "ALL",
+        "BY_COUNTY",
+        "POSITIVES",
+        "NEGATIVES"
+      ],
+      "default": "ALL",
+      "title": "BroadCastMessageFilter is type filter for broadcast messages"
+    },
+    "covitraceBroadCastMessageRequest": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/covitraceMessageType"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceBroadCastMessageFilter"
+          }
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "BroadCastMessageRequest is request to broadcast message to users"
+    },
+    "covitraceBroadCastMessageResponse": {
+      "type": "object",
+      "properties": {
+        "broadcast_message_id": {
+          "type": "string"
+        }
+      },
+      "title": "BroadCastMessageResponse is response after a message has been broadcasted containing the broadcast id"
+    },
+    "covitraceContactData": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "user_phone": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "patient_phone": {
+          "type": "string"
+        },
+        "device_token": {
+          "type": "string"
+        },
+        "contact_points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceContactPoint"
+          }
+        }
+      },
+      "title": "ContactData contains locational contacts infomation"
+    },
+    "covitraceContactPoint": {
+      "type": "object",
+      "properties": {
+        "geo_fence_id": {
+          "type": "string"
+        },
+        "time_id": {
+          "type": "string"
+        }
+      },
+      "title": "ContactPoint is a geographic contact point at a particular time"
+    },
+    "covitraceMessage": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "string"
+        },
+        "user_phone": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "notification": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "int64"
+        },
+        "sent": {
+          "type": "boolean",
+          "format": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/covitraceMessageType"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "Message is a message payload"
+    },
+    "covitraceMessageType": {
+      "type": "string",
+      "enum": [
+        "ANY",
+        "ALERT",
+        "WARNING",
+        "INFO"
+      ],
+      "default": "ANY",
+      "title": "MessageType is category of a message"
+    },
+    "covitraceMessages": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceMessage"
+          }
+        }
+      },
+      "title": "Messages is a collection of user messages"
+    },
+    "covitraceSendMessageResponse": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "string"
+        }
+      },
+      "title": "SendMessageResponse is response after sending message contains message id"
+    }
+  }
+}

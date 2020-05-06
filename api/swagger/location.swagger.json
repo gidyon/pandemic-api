@@ -1,0 +1,357 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "location.proto",
+    "version": "version not set"
+  },
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/api/v1/locations/send": {
+      "post": {
+        "summary": "Send a single location to the server",
+        "operationId": "SendLocation",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceSendLocationRequest"
+            }
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/locations/send/bulk": {
+      "post": {
+        "summary": "Sends user locations",
+        "operationId": "SendLocations",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceSendLocationsRequest"
+            }
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/users/action/add": {
+      "post": {
+        "summary": "Add a new user",
+        "operationId": "AddUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceAddUserRequest"
+            }
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/users/action/list": {
+      "get": {
+        "summary": "Retrieves a collection of users",
+        "operationId": "ListUsers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceListUsersResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "filter_status",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "POSITIVE",
+              "NEGATIVE",
+              "SUSPECTED",
+              "RECOVERED"
+            ],
+            "default": "UNKNOWN"
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/users/{phone_number}": {
+      "get": {
+        "summary": "Retrieves a single user",
+        "operationId": "GetUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceUser"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/users/{phone_number}/status": {
+      "patch": {
+        "summary": "Updates user status",
+        "operationId": "UpdateUserStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceUpdateUserStatusRequest"
+            }
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "covitraceAddUserRequest": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/definitions/covitraceUser"
+        }
+      },
+      "title": "AddUserRequest is request to add a user"
+    },
+    "covitraceListUsersResponse": {
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceUser"
+          }
+        },
+        "next_page_token": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "title": "ListUsersResponse is response after fetching users"
+    },
+    "covitraceLocation": {
+      "type": "object",
+      "properties": {
+        "longitude": {
+          "type": "number",
+          "format": "float"
+        },
+        "latitude": {
+          "type": "number",
+          "format": "float"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "int64"
+        },
+        "accuracy": {
+          "type": "number",
+          "format": "float"
+        },
+        "altitude": {
+          "type": "number",
+          "format": "float"
+        },
+        "speed": {
+          "type": "number",
+          "format": "float"
+        },
+        "speed_accuracy": {
+          "type": "number",
+          "format": "float"
+        },
+        "placemark": {
+          "type": "string"
+        },
+        "geo_fence_id": {
+          "type": "string"
+        },
+        "time_id": {
+          "type": "string"
+        }
+      },
+      "title": "Represents a geographic location"
+    },
+    "covitraceSendLocationRequest": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "status_id": {
+          "$ref": "#/definitions/covitraceStatus"
+        },
+        "location": {
+          "$ref": "#/definitions/covitraceLocation"
+        }
+      },
+      "title": "SendLocationRequest is request to send a single location"
+    },
+    "covitraceSendLocationsRequest": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "status_id": {
+          "$ref": "#/definitions/covitraceStatus"
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceLocation"
+          }
+        }
+      },
+      "title": "SendLocationsRequest is request to send a collection of location"
+    },
+    "covitraceStatus": {
+      "type": "string",
+      "enum": [
+        "UNKNOWN",
+        "POSITIVE",
+        "NEGATIVE",
+        "SUSPECTED",
+        "RECOVERED"
+      ],
+      "default": "UNKNOWN",
+      "title": "Status is user status"
+    },
+    "covitraceUpdateUserStatusRequest": {
+      "type": "object",
+      "properties": {
+        "phone_number": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/covitraceStatus"
+        }
+      },
+      "title": "UpdateUserStatusRequest is request to update user status"
+    },
+    "covitraceUser": {
+      "type": "object",
+      "properties": {
+        "phone_number": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "county": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/covitraceStatus"
+        },
+        "device_token": {
+          "type": "string"
+        },
+        "traced": {
+          "type": "boolean",
+          "format": "boolean"
+        },
+        "updated_timestamp": {
+          "type": "string",
+          "format": "int64"
+        }
+      },
+      "title": "User is an app user"
+    }
+  }
+}
