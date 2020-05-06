@@ -10,7 +10,7 @@ import (
 
 	messaging_app "github.com/gidyon/pandemic-api/internal/services/messaging"
 
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 
 	"github.com/gidyon/config"
 	"github.com/gidyon/micros"
@@ -45,7 +45,7 @@ func main() {
 	fcmClient, err := fcm.NewClient(os.Getenv("FCM_SERVER_KEY"))
 	handleErr(err)
 
-	// Create location tracing instance
+	// Create messaging tracing instance
 	messagingAPI, err := messaging_app.NewMessagingServer(ctx, &messaging_app.Options{
 		SQLDB:     app.GormDB(),
 		FCMClient: fcmClient,
@@ -56,8 +56,8 @@ func main() {
 	// Initialize grpc server
 	handleErr(app.InitGRPC(ctx))
 
-	location.RegisterMessagingServer(app.GRPCServer(), messagingAPI)
-	handleErr(location.RegisterMessagingHandlerServer(ctx, app.RuntimeMux(), messagingAPI))
+	messaging.RegisterMessagingServer(app.GRPCServer(), messagingAPI)
+	handleErr(messaging.RegisterMessagingHandlerServer(ctx, app.RuntimeMux(), messagingAPI))
 
 	handleErr(app.Run(ctx))
 }

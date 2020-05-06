@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"github.com/gidyon/micros/utils/healthcheck"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 	"strings"
 
 	"google.golang.org/grpc"
 
 	tracing_service "github.com/gidyon/pandemic-api/internal/services/tracing"
 
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/contact_tracing"
 
 	"github.com/gidyon/config"
 	"github.com/gidyon/micros"
@@ -47,11 +48,11 @@ func main() {
 	cc, err := app.DialExternalService(ctx, "messaging", dopts)
 	handleErr(err)
 
-	messagingClient := location.NewMessagingClient(cc)
+	messagingClient := messaging.NewMessagingClient(cc)
 
 	app.Logger().Infoln("connected to messaging service")
 
-	// Create location tracing instance
+	// Create contact_tracing tracing instance
 	tracingAPI, err := tracing_service.NewContactTracingAPI(ctx, &tracing_service.Options{
 		SQLDB:           app.GormDB(),
 		RedisClient:     app.RedisClient(),
@@ -63,8 +64,8 @@ func main() {
 	// Initialize grpc server
 	handleErr(app.InitGRPC(ctx))
 
-	location.RegisterContactTracingServer(app.GRPCServer(), tracingAPI)
-	handleErr(location.RegisterContactTracingHandlerServer(ctx, app.RuntimeMux(), tracingAPI))
+	contact_tracing.RegisterContactTracingServer(app.GRPCServer(), tracingAPI)
+	handleErr(contact_tracing.RegisterContactTracingHandlerServer(ctx, app.RuntimeMux(), tracingAPI))
 
 	handleErr(app.Run(ctx))
 }

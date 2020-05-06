@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"github.com/gidyon/micros/utils/healthcheck"
+	"google.golang.org/grpc"
+	"os"
 	"strings"
 
 	location_app "github.com/gidyon/pandemic-api/internal/services/location"
 
 	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 
 	"github.com/gidyon/config"
 	"github.com/gidyon/micros"
@@ -38,10 +41,24 @@ func main() {
 		AutoMigrator: func() error { return nil },
 	}))
 
+	// Connect to external service
+	dopts := []grpc.DialOption{
+		grpc.WithBlock(),
+	}
+	cc, err := app.DialExternalService(ctx, "messaging", dopts)
+	handleErr(err)
+
+	messagingClient := messaging.NewMessagingClient(cc)
+
+	app.Logger().Infoln("connected to messaging service")
+
 	// Create location tracing instance
 	locationAPI, err := location_app.NewLocationTracing(ctx, &location_app.Options{
-		LogsDB:   app.GormDB(),
-		EventsDB: app.RedisClient(),
+		LogsDB:          app.GormDB(),
+		EventsDB:        app.RedisClient(),
+		MessagingClient: messagingClient,
+		Logger:          app.Logger(),
+		RealTimeAlerts:  os.Getenv("ENABLE_REALTIME_ALERTS") == "true",
 	})
 	handleErr(err)
 

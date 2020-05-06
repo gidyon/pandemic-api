@@ -75,7 +75,7 @@ func registerHandlers(srv *micros.Service) {
 	})
 
 	// Global middlewares
-	handler := middleware.Apply(router, middleware.SupportCORS, middleware.SetJSONCtype)
+	handler := middleware.Apply(router, middleware.SetJSONCtype)
 
 	srv.AddEndpoint("/rest/v1/", handler)
 }
