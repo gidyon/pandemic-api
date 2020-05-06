@@ -5,8 +5,8 @@ package mocks
 import (
 	context "context"
 
-	location "github.com/gidyon/pandemic-api/pkg/api/location"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	messaging "github.com/gidyon/pandemic-api/pkg/api/messaging"
+	empty "github.com/golang/protobuf/ptypes/empty"
 
 	metadata "google.golang.org/grpc/metadata"
 
@@ -19,15 +19,15 @@ type AlertContactsStream struct {
 }
 
 // CloseAndRecv provides a mock function with given fields:
-func (_m *AlertContactsStream) CloseAndRecv() (*emptypb.Empty, error) {
+func (_m *AlertContactsStream) CloseAndRecv() (*empty.Empty, error) {
 	ret := _m.Called()
 
-	var r0 *emptypb.Empty
-	if rf, ok := ret.Get(0).(func() *emptypb.Empty); ok {
+	var r0 *empty.Empty
+	if rf, ok := ret.Get(0).(func() *empty.Empty); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*emptypb.Empty)
+			r0 = ret.Get(0).(*empty.Empty)
 		}
 	}
 
@@ -109,11 +109,11 @@ func (_m *AlertContactsStream) RecvMsg(m interface{}) error {
 }
 
 // Send provides a mock function with given fields: _a0
-func (_m *AlertContactsStream) Send(_a0 *location.ContactData) error {
+func (_m *AlertContactsStream) Send(_a0 *messaging.ContactData) error {
 	ret := _m.Called(_a0)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*location.ContactData) error); ok {
+	if rf, ok := ret.Get(0).(func(*messaging.ContactData) error); ok {
 		r0 = rf(_a0)
 	} else {
 		r0 = ret.Error(0)

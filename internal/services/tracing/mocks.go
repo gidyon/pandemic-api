@@ -1,15 +1,15 @@
 package tracing
 
 import (
-	"github.com/gidyon/pandemic-api/pkg/api/location"
+	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 )
 
 // MessagingClientMock creates a mock for messaging API
 type MessagingClientMock interface {
-	location.MessagingClient
+	messaging.MessagingClient
 }
 
 // AlertContactsStream is mock for grpc client stream
 type AlertContactsStream interface {
-	location.Messaging_AlertContactsClient
+	messaging.Messaging_AlertContactsClient
 }

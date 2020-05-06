@@ -7,7 +7,7 @@ import (
 
 	grpc "google.golang.org/grpc"
 
-	location "github.com/gidyon/pandemic-api/pkg/api/location"
+	messaging "github.com/gidyon/pandemic-api/pkg/api/messaging"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -18,7 +18,7 @@ type MessagingClientMock struct {
 }
 
 // AlertContacts provides a mock function with given fields: ctx, opts
-func (_m *MessagingClientMock) AlertContacts(ctx context.Context, opts ...grpc.CallOption) (location.Messaging_AlertContactsClient, error) {
+func (_m *MessagingClientMock) AlertContacts(ctx context.Context, opts ...grpc.CallOption) (messaging.Messaging_AlertContactsClient, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -28,12 +28,12 @@ func (_m *MessagingClientMock) AlertContacts(ctx context.Context, opts ...grpc.C
 	_ca = append(_ca, _va...)
 	ret := _m.Called(_ca...)
 
-	var r0 location.Messaging_AlertContactsClient
-	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) location.Messaging_AlertContactsClient); ok {
+	var r0 messaging.Messaging_AlertContactsClient
+	if rf, ok := ret.Get(0).(func(context.Context, ...grpc.CallOption) messaging.Messaging_AlertContactsClient); ok {
 		r0 = rf(ctx, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(location.Messaging_AlertContactsClient)
+			r0 = ret.Get(0).(messaging.Messaging_AlertContactsClient)
 		}
 	}
 
@@ -48,7 +48,7 @@ func (_m *MessagingClientMock) AlertContacts(ctx context.Context, opts ...grpc.C
 }
 
 // BroadCastMessage provides a mock function with given fields: ctx, in, opts
-func (_m *MessagingClientMock) BroadCastMessage(ctx context.Context, in *location.BroadCastMessageRequest, opts ...grpc.CallOption) (*location.BroadCastMessageResponse, error) {
+func (_m *MessagingClientMock) BroadCastMessage(ctx context.Context, in *messaging.BroadCastMessageRequest, opts ...grpc.CallOption) (*messaging.BroadCastMessageResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -58,17 +58,47 @@ func (_m *MessagingClientMock) BroadCastMessage(ctx context.Context, in *locatio
 	_ca = append(_ca, _va...)
 	ret := _m.Called(_ca...)
 
-	var r0 *location.BroadCastMessageResponse
-	if rf, ok := ret.Get(0).(func(context.Context, *location.BroadCastMessageRequest, ...grpc.CallOption) *location.BroadCastMessageResponse); ok {
+	var r0 *messaging.BroadCastMessageResponse
+	if rf, ok := ret.Get(0).(func(context.Context, *messaging.BroadCastMessageRequest, ...grpc.CallOption) *messaging.BroadCastMessageResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*location.BroadCastMessageResponse)
+			r0 = ret.Get(0).(*messaging.BroadCastMessageResponse)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *location.BroadCastMessageRequest, ...grpc.CallOption) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *messaging.BroadCastMessageRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ListMessages provides a mock function with given fields: ctx, in, opts
+func (_m *MessagingClientMock) ListMessages(ctx context.Context, in *messaging.ListMessagesRequest, opts ...grpc.CallOption) (*messaging.Messages, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *messaging.Messages
+	if rf, ok := ret.Get(0).(func(context.Context, *messaging.ListMessagesRequest, ...grpc.CallOption) *messaging.Messages); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*messaging.Messages)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *messaging.ListMessagesRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
@@ -78,7 +108,7 @@ func (_m *MessagingClientMock) BroadCastMessage(ctx context.Context, in *locatio
 }
 
 // SendMessage provides a mock function with given fields: ctx, in, opts
-func (_m *MessagingClientMock) SendMessage(ctx context.Context, in *location.SendMessageRequest, opts ...grpc.CallOption) (*location.SendMessageResponse, error) {
+func (_m *MessagingClientMock) SendMessage(ctx context.Context, in *messaging.Message, opts ...grpc.CallOption) (*messaging.SendMessageResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -88,17 +118,17 @@ func (_m *MessagingClientMock) SendMessage(ctx context.Context, in *location.Sen
 	_ca = append(_ca, _va...)
 	ret := _m.Called(_ca...)
 
-	var r0 *location.SendMessageResponse
-	if rf, ok := ret.Get(0).(func(context.Context, *location.SendMessageRequest, ...grpc.CallOption) *location.SendMessageResponse); ok {
+	var r0 *messaging.SendMessageResponse
+	if rf, ok := ret.Get(0).(func(context.Context, *messaging.Message, ...grpc.CallOption) *messaging.SendMessageResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*location.SendMessageResponse)
+			r0 = ret.Get(0).(*messaging.SendMessageResponse)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, *location.SendMessageRequest, ...grpc.CallOption) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *messaging.Message, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
