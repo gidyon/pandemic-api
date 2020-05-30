@@ -14,13 +14,16 @@ spec:
     spec:
       containers:
       - name: pandemic-api-location
-        image: gidyon/pandemic-api-location:v0.3
+        image: gidyon/pandemic-api-location:v0.6
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:
         - containerPort: 443
           name: https
           protocol: TCP
+        env:
+        - name: ENABLE_REALTIME_ALERTS
+          value: "false"
         readinessProbe: # Checks that the container is started
           httpGet:
             path: /api/v1/locations/readyq/
@@ -46,6 +49,9 @@ spec:
           - name: app-config
             mountPath: /app/configs/
             readOnly: true
+          - name: messaging-tls
+            mountPath: /app/secrets/keys/messaging
+            readOnly: true
           - name: mysql-creds
             mountPath: /app/secrets/mysql/
             readOnly: true
@@ -55,7 +61,10 @@ spec:
           secretName: location-tls-v1
       - name: app-config
         configMap:
-          name: location-v2
+          name: location-v3
+      - name: messaging-tls
+        secret:
+          secretName: messaging-tls-v1
       - name: mysql-creds
         secret:
           secretName: mysql-credentials
@@ -84,7 +93,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: messaging
+  name: location
   labels:
     app: pandemic-api-location
 spec:

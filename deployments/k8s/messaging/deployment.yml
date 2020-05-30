@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-api-messaging
-        image: gidyon/pandemic-api-messaging:v0.6
+        image: gidyon/pandemic-api-messaging:v0.8
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:

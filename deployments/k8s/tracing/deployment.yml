@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-api-tracing
-        image: gidyon/pandemic-api-tracing:v0.4
+        image: gidyon/pandemic-api-tracing:v0.6
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:

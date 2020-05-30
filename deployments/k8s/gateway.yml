@@ -4,7 +4,7 @@ port: 443
 security:
   tlsCert: /app/secrets/keys/cert
   tlsKey: /app/secrets/keys/key
-  serverName: app
+  serverName: gateway
   insecure: true
   
 handlers:
@@ -60,3 +60,11 @@ services:
   security:
     tlsCert: /app/secrets/keys/restful/cert
     server: restful
+
+- name: ussd
+  address: https://ussd:443
+  pathPrefixes: 
+  - /callbacks/ussd/
+  security:
+    tlsCert: /app/secrets/keys/cert
+    server: gateway

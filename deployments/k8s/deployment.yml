@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
       - name: pandemic-api-gateway
-        image: gidyon/pandemic-api:v0.3
-        args: ["--services-file", "/app/configs/gateway.yml", "--port", "443"]
+        image: gidyon/pandemic-api:v0.5
+        args: ["--cors", "--services-file", "/app/configs/gateway.yml", "--port", "443"]
         imagePullPolicy: Always
         ports:
         - containerPort: 443
@@ -67,7 +67,7 @@ spec:
           secretName: gateway-tls-v1
       - name: gateway-config
         configMap:
-          name: gateway-v3
+          name: gateway-v4
       - name: mysql-creds
         secret:
           secretName: mysql-credentials

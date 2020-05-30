@@ -29,3 +29,13 @@ databases:
     metadata:
       name: redis
       useRediSearch: false
+externalServices:
+- name: messaging
+  type: Messaging
+  required: true
+  address: messaging:443
+  host: messaging
+  port: 443
+  tlsCert: /app/secrets/keys/messaging/cert
+  serverName: messaging
+  k8service: true

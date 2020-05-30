@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-api-pusher
-        image: gidyon/pandemic-api-pusher:v0.14
+        image: gidyon/pandemic-api-pusher:v0.2
         args: ["--config-file", "/app/configs/config.yml", "--interval-minutes", "1"]
         imagePullPolicy: Always
         env:

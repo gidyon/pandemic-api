@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-restful
-        image: gidyon/pandemic-api-restful:v0.21
+        image: gidyon/pandemic-api-restful:v0.4
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:
