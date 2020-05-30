@@ -4,11 +4,39 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gidyon/pandemic-api/internal/services"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+// AuthenticateRequest authenticates incoming request
+func AuthenticateRequest(ctx context.Context) error {
+	_, err := ParseFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// AuthenticateUser authenticates credentials in their jwt with phone number
+func AuthenticateUser(ctx context.Context, phone string) error {
+	// Validation
+	switch {
+	case phone == "":
+		return services.MissingFieldError("phone")
+	}
+
+	claims, err := ParseFromCtx(ctx)
+	if err != nil {
+		return err
+	}
+	if claims.PhoneNumber != phone {
+		return status.Error(codes.Unauthenticated, "phone do not match")
+	}
+	return nil
+}
 
 // AuthenticateGroup authenticates whether token belongs to member of a particular group
 func AuthenticateGroup(ctx context.Context, group string) (*Payload, error) {
