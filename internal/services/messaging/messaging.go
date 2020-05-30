@@ -25,6 +25,8 @@ import (
 	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 )
 
+var emptyMsg = &empty.Empty{}
+
 type messagingServer struct {
 	failedSend chan *fcmErrFDetails
 	sqlDB      *gorm.DB
@@ -112,6 +114,7 @@ func (s *messagingServer) alertContact(
 ) error {
 	messageData := map[string]interface{}{
 		"patient_phone":  contactData.PatientPhone,
+		"contact_time":   contactData.ContactTime,
 		"contact_points": fmt.Sprint(contactData.Count),
 	}
 
@@ -500,6 +503,7 @@ func getMessageDB(messagePB *messaging.Message) (*services.Message, error) {
 		Title:     messagePB.Title,
 		Message:   messagePB.Notification,
 		Sent:      messagePB.Sent,
+		Seen:      messagePB.Seen,
 		Type:      int8(messagePB.Type),
 	}
 
@@ -522,6 +526,7 @@ func getMessagePB(messageDB *services.Message) (*messaging.Message, error) {
 		Notification: messageDB.Message,
 		Timestamp:    messageDB.CreatedAt.Unix(),
 		Sent:         messageDB.Sent,
+		Seen:         messageDB.Seen,
 		Type:         messaging.MessageType(messageDB.Type),
 	}
 
@@ -535,4 +540,63 @@ func getMessagePB(messageDB *services.Message) (*messaging.Message, error) {
 	}
 
 	return messagePB, nil
+}
+
+func (s *messagingServer) ReadAll(
+	ctx context.Context, msgReq *messaging.MessageRequest,
+) (*empty.Empty, error) {
+	// Request must not be nil
+	if msgReq == nil {
+		return nil, services.NilRequestError("MessageRequest")
+	}
+
+	// Validation
+	var err error
+	switch {
+	case msgReq.PhoneNumber == "":
+		err = services.MissingFieldError("phone number")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Update messages
+	err = s.sqlDB.Model(services.Message{}).Where("user_phone=?", msgReq.PhoneNumber).
+		Update("seen", true).Error
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to update messages: %v", err)
+	}
+
+	return emptyMsg, nil
+}
+
+func (s *messagingServer) GetNewMessagesCount(
+	ctx context.Context, msgReq *messaging.MessageRequest,
+) (*messaging.NewMessagesCount, error) {
+	// Request must not be nil
+	if msgReq == nil {
+		return nil, services.NilRequestError("MessageRequest")
+	}
+
+	// Validation
+	var err error
+	switch {
+	case msgReq.PhoneNumber == "":
+		err = services.MissingFieldError("phone number")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var count int32
+	err = s.sqlDB.Model(services.Message{}).Where("user_phone=? AND seen=?", msgReq.PhoneNumber, false).
+		Count(&count).Error
+	if err != nil {
+		s.logger.Errorln(err)
+		return nil, status.Errorf(codes.Internal, "failed to get new messages: %v", err)
+	}
+
+	return &messaging.NewMessagesCount{
+		Count: count,
+	}, nil
 }
