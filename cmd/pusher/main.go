@@ -11,7 +11,7 @@ import (
 	"os"
 )
 
-var interval = flag.Int("interval-minutes", 5, "interval to request for location")
+var interval = flag.Int("interval-seconds", 10, "interval to request for location")
 
 func main() {
 	ctx := context.Background()
@@ -26,10 +26,11 @@ func main() {
 	fcmClient, err := fcm.NewClient(os.Getenv("FCM_SERVER_KEY"))
 	handleErr(err)
 
+	service.Logger().Infoln("starting worker")
+
 	// Starts pusher
 	err = pusher.StartWorker(ctx, &pusher.Options{
 		SQLDB:     service.GormDB(),
-		RedisDB:   service.RedisClient(),
 		FCMClient: fcmClient,
 		Logger:    service.Logger(),
 		Interval:  *interval,
