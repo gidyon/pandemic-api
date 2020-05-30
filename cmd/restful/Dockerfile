@@ -5,8 +5,8 @@ RUN apk update && \
    update-ca-certificates && \
    rm -rf /var/cache/apk/* && \
    apk add libc6-compat
+EXPOSE 80 443
 WORKDIR /app
 COPY json json
-COPY restful .
-EXPOSE 80 443
-ENTRYPOINT [ "/app/restful" ]
+COPY service .
+ENTRYPOINT [ "/app/service" ]

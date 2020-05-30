@@ -6,5 +6,5 @@ RUN apk update && \
    rm -rf /var/cache/apk/* && \
    apk add libc6-compat
 WORKDIR /app
-COPY pusher .
-ENTRYPOINT [ "/app/pusher" ]
+COPY service .
+ENTRYPOINT [ "/app/service" ]
