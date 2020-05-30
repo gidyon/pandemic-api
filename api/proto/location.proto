@@ -52,6 +52,12 @@ message UpdateUserStatusRequest {
     Status status = 2;
 }
 
+// UpdateUserRequest is request to update user account
+message UpdateUserRequest {
+    string phone_number = 1;
+    User user = 2;
+}
+
 // AddUserRequest is request to add a user
 message AddUserRequest {
     User user = 1;
@@ -114,6 +120,16 @@ service LocationTracingAPI {
         // Everything maps to the body of the request
         option (google.api.http) = {
             patch: "/api/v1/users/{phone_number}/status"
+            body: "*"
+        };
+    };
+
+    // Updates user status
+    rpc UpdateUser (UpdateUserRequest) returns (google.protobuf.Empty) {
+        // Maps to HTTP PATCH
+        // Everything maps to the body of the request
+        option (google.api.http) = {
+            patch: "/api/v1/users/{phone_number}"
             body: "*"
         };
     };
