@@ -55,9 +55,9 @@ var _ = BeforeSuite(func() {
 
 	// Create mock for messaging server
 	messagingClient := &mocks.MessagingClientMock{}
-	messagingClient.On("BroadCastMessage", mock.Anything, mock.Anything).
+	messagingClient.On("BroadCastMessage", mock.Anything, mock.Anything, mock.Anything).
 		Return(&messaging.BroadCastMessageResponse{}, nil)
-	messagingClient.On("SendMessage", mock.Anything, mock.Anything).
+	messagingClient.On("SendMessage", mock.Anything, mock.Anything, mock.Anything).
 		Return(&messaging.SendMessageResponse{}, nil)
 
 	opt := &Options{
@@ -76,6 +76,16 @@ var _ = BeforeSuite(func() {
 	var ok bool
 	LocationServer, ok = LocationAPI.(*locationAPIServer)
 	Expect(ok).Should(BeTrue())
+
+	LocationServer.authorize = func(context.Context, string) error {
+		return nil
+	}
+
+	LocationServer.authenticate = func(context.Context) error {
+		return nil
+	}
+
+	LocationAPI = LocationServer
 
 	// Pasing incorrect payload
 	_, err = NewLocationTracing(nil, opt)

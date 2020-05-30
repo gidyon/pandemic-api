@@ -50,27 +50,50 @@ var _ = Describe("Listing users #list", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(status.Code(err)).Should(Equal(codes.OK))
 				Expect(listRes).ShouldNot(BeNil())
+
+				// Status must be negative
+				for _, userPB := range listRes.Users {
+					Expect(userPB.Status).Should(Equal(location.Status_NEGATIVE))
+				}
 			})
+
 			It("should succeed when status is positive", func() {
 				listReq.FilterStatus = location.Status_POSITIVE
 				listRes, err := LocationAPI.ListUsers(ctx, listReq)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(status.Code(err)).Should(Equal(codes.OK))
 				Expect(listRes).ShouldNot(BeNil())
+
+				// Status must be positive
+				for _, userPB := range listRes.Users {
+					Expect(userPB.Status).Should(Equal(location.Status_POSITIVE))
+				}
 			})
+
 			It("should succeed when status is recovered", func() {
 				listReq.FilterStatus = location.Status_RECOVERED
 				listRes, err := LocationAPI.ListUsers(ctx, listReq)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(status.Code(err)).Should(Equal(codes.OK))
 				Expect(listRes).ShouldNot(BeNil())
+
+				// Status must be recovered
+				for _, userPB := range listRes.Users {
+					Expect(userPB.Status).Should(Equal(location.Status_RECOVERED))
+				}
 			})
-			It("should succeed when status is unknown", func() {
-				listReq.FilterStatus = location.Status_UNKNOWN
+
+			It("should succeed when status is suspected", func() {
+				listReq.FilterStatus = location.Status_SUSPECTED
 				listRes, err := LocationAPI.ListUsers(ctx, listReq)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(status.Code(err)).Should(Equal(codes.OK))
 				Expect(listRes).ShouldNot(BeNil())
+
+				// Status must be suspected
+				for _, userPB := range listRes.Users {
+					Expect(userPB.Status).Should(Equal(location.Status_SUSPECTED))
+				}
 			})
 		})
 	})
