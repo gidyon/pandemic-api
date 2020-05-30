@@ -2,7 +2,6 @@ package tracing
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gidyon/pandemic-api/pkg/api/contact_tracing"
@@ -17,8 +16,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"google.golang.org/genproto/googleapis/longrunning"
-
 	"google.golang.org/grpc"
 
 	"google.golang.org/grpc/codes"
@@ -29,8 +26,6 @@ import (
 	"github.com/go-redis/redis"
 
 	"github.com/jinzhu/gorm"
-
-	spb "google.golang.org/genproto/googleapis/rpc/status"
 )
 
 type tracingAPIServer struct {
@@ -156,24 +151,12 @@ func (t *tracingAPIServer) TraceUserLocations(
 		return nil, status.Errorf(codes.Internal, "failed to create stream for sending messages: %v", err)
 	}
 
-	// Create a long running operation
-	longrunningOp := &longrunning.Operation{
-		Name: fmt.Sprintf("TraceUserLocations::%s", uuid.New().String()),
-		Done: false,
-	}
-
-	// Marshal to bytes json
-	bs, err := json.Marshal(longrunningOp)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to marshal longrunning operation: %v", err)
-	}
-
 	// Save operation
 	operationDB := &services.ContactTracingOperation{
 		County:      userDB.County,
 		Description: fmt.Sprintf("%s - %s", userDB.FullName, userDB.PhoneNumber),
-		Done:        false,
-		Payload:     bs,
+		Status:      int8(contact_tracing.OperationStatus_PENDING),
+		Name:        fmt.Sprintf("TraceUserLocations::%s", uuid.New().String()),
 	}
 	err = t.sqlDB.Create(operationDB).Error
 	if err != nil {
@@ -215,16 +198,17 @@ func (t *tracingAPIServer) traceUserWorker(
 		condition = true
 		offset    = 0
 		err       error
+		days      = int(todayDate.Sub(*sinceDate).Hours()/24) + 1
+		usersDB   []*services.UserModel
+		mu        = &sync.Mutex{}
+		complete  = true
 	)
-
-	days := int(todayDate.Sub(*sinceDate).Hours()/24) + 1
-
-	var usersDB []*services.UserModel
 
 	for condition {
 		usersDB = make([]*services.UserModel, 0, limit)
 
-		db := t.sqlDB.Limit(limit).Offset(offset)
+		// Only those whose current status is not known
+		db := t.sqlDB.Limit(limit).Offset(offset).Where("status=?", int8(location.Status_UNKNOWN))
 
 		if len(traceCounties) > 0 {
 			db = db.Where("county IN(?)", traceCounties)
@@ -233,7 +217,8 @@ func (t *tracingAPIServer) traceUserWorker(
 		err = db.Find(&usersDB).Error
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to get users to send messages: %v", err)
-			t.logger.Errorf(errMsg)
+			t.logger.Error(errMsg)
+			complete = false
 			t.failLongRunningOperation(longrunningID, errMsg)
 			return
 		}
@@ -256,12 +241,12 @@ func (t *tracingAPIServer) traceUserWorker(
 				defer wg.Done()
 
 				contactData := &messaging.ContactData{
-					Count:         0,
-					PatientPhone:  userDB.PhoneNumber,
-					UserPhone:     suspect.PhoneNumber,
-					FullName:      suspect.FullName,
-					DeviceToken:   suspect.DeviceToken,
-					ContactPoints: make([]*messaging.ContactPoint, 0),
+					Count:        0,
+					PatientPhone: userDB.PhoneNumber,
+					UserPhone:    suspect.PhoneNumber,
+					FullName:     suspect.FullName,
+					DeviceToken:  suspect.DeviceToken,
+					ContactTime:  sinceDate.String(),
 				}
 
 				pipeliner := t.redisDB.Pipeline()
@@ -283,8 +268,12 @@ func (t *tracingAPIServer) traceUserWorker(
 
 				_, err := pipeliner.Exec()
 				if err != nil {
-					t.logger.Error("error while executing pipeline: %v", err)
-					t.sendContactData(contactData)
+					mu.Lock()
+					complete = false
+					mu.Unlock()
+					errMsg := fmt.Sprintf("error while executing pipeline: %v", err)
+					t.logger.Error(errMsg)
+					t.failLongRunningOperation(longrunningID, errMsg)
 					return
 				}
 
@@ -292,32 +281,30 @@ func (t *tracingAPIServer) traceUserWorker(
 
 					contacts, err := res.Result()
 					if err != nil {
-						t.logger.Error("failed to get contact points: %v", err)
-						// Send failed user id
-						select {
-						case <-time.After(5 * time.Second):
-						case t.failedDayContactChan <- &dayContact{
-							UserPhone:    suspect.PhoneNumber,
-							PatientPhone: userDB.PhoneNumber,
-							Date:         sinceDate,
-						}:
-						}
-						continue
+						mu.Lock()
+						complete = false
+						mu.Unlock()
+						errMsg := fmt.Sprintf("failed to get contact points: %v", err)
+						t.logger.Error(errMsg)
+						t.failLongRunningOperation(longrunningID, errMsg)
+						return
 					}
 
 					// Range individual contact points
-					for _, contact := range contacts {
-						contactPointData := strings.Split(contact, ":")
+					if len(contacts) > 0 {
+						contactPointData := strings.Split(contacts[0], ":")
 						if len(contactPointData) != 3 {
-							t.logger.Warning("empty contact point data")
-							continue
+							mu.Lock()
+							complete = false
+							mu.Unlock()
+							errMsg := "empty contact point data"
+							t.logger.Error(errMsg)
+							t.failLongRunningOperation(longrunningID, errMsg)
+							return
 						}
 
-						contactData.Count++
-						contactData.ContactPoints = append(contactData.ContactPoints, &messaging.ContactPoint{
-							GeoFenceId: contactPointData[0] + contactPointData[1],
-							TimeId:     contactPointData[2],
-						})
+						contactData.ContactTime = contactPointData[2]
+						contactData.Count = int32(len(contacts))
 					}
 				}
 
@@ -326,8 +313,13 @@ func (t *tracingAPIServer) traceUserWorker(
 					err = t.sqlDB.Table(services.UsersTable).Where("phone_number=?", suspect.PhoneNumber).
 						Update("status", int8(location.Status_SUSPECTED)).Error
 					if err != nil {
-						t.logger.Error("error while updating user status: %v", err)
-						t.sendContactData(contactData)
+						mu.Lock()
+						complete = false
+						mu.Unlock()
+						errMsg := fmt.Sprintf("error while updating user status: %v", err)
+						t.logger.Error(errMsg)
+						t.failLongRunningOperation(longrunningID, errMsg)
+						return
 					}
 
 					// Send contact data to messaging server
@@ -337,8 +329,12 @@ func (t *tracingAPIServer) traceUserWorker(
 					case errors.Is(err, io.EOF):
 						break
 					default:
-						t.logger.Error("error while sending to stream: %v", err)
-						t.sendContactData(contactData)
+						mu.Lock()
+						complete = false
+						mu.Unlock()
+						errMsg := fmt.Sprintf("error while sending to stream: %v", err)
+						t.logger.Error(errMsg)
+						t.failLongRunningOperation(longrunningID, errMsg)
 						return
 					}
 				}
@@ -348,6 +344,25 @@ func (t *tracingAPIServer) traceUserWorker(
 		wg.Wait()
 
 		offset += len(usersDB)
+	}
+
+	if complete {
+		err = t.completeLongRunningOperation(longrunningID)
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to mark long running operation as complete: %v", err)
+			t.failLongRunningOperation(longrunningID, errMsg)
+			return
+		}
+
+		// Update status of user to traced
+		err = t.sqlDB.Table(services.UsersTable).Where("phone_number=?", userDB.PhoneNumber).
+			Update("traced", true).Error
+		if err != nil {
+			errMsg := fmt.Sprintf("failed to update user traced status: %v", err)
+			t.logger.Error(errMsg)
+			t.failLongRunningOperation(longrunningID, errMsg)
+			return
+		}
 	}
 }
 
@@ -360,32 +375,8 @@ func (t *tracingAPIServer) failLongRunningOperation(longrunningID uint, errMsg s
 		return
 	}
 
-	// Unmarshal to proto message
-	longrunningOp := &longrunning.Operation{}
-	err = json.Unmarshal(operationDB.Payload, longrunningOp)
-	if err != nil {
-		t.logger.Errorf("failed to unmarshal longrunning operation: %v", err)
-		return
-	}
-
-	// Update proto message
-	longrunningOp.Done = true
-	longrunningOp.Result = &longrunning.Operation_Error{
-		Error: &spb.Status{
-			Code:    int32(codes.Internal),
-			Message: fmt.Sprintf("the operation failed: %s", errMsg),
-		},
-	}
-
-	// Marshal to bytes
-	bs, err := json.Marshal(longrunningOp)
-	if err != nil {
-		t.logger.Errorf("failed to marshal longrunning operation: %v", err)
-		return
-	}
-
-	operationDB.Payload = bs
-	operationDB.Done = true
+	operationDB.Result = fmt.Sprintf("the operation failed: %s", errMsg)
+	operationDB.Status = int8(contact_tracing.OperationStatus_FAILED)
 
 	// Save back to cache
 	err = t.sqlDB.Table(services.ContactTracingOperationTable).Where("id=?", longrunningID).
@@ -396,10 +387,33 @@ func (t *tracingAPIServer) failLongRunningOperation(longrunningID uint, errMsg s
 	}
 }
 
+func (t *tracingAPIServer) completeLongRunningOperation(longrunningID uint) error {
+	// Get the longrunning operation
+	operationDB := &services.ContactTracingOperation{}
+	err := t.sqlDB.First(operationDB, "id=?", longrunningID).Error
+	if err != nil {
+		t.logger.Errorf("failed to get longrunning operation from database: %v", err)
+		return err
+	}
+
+	operationDB.Result = "operation completed successfully"
+	operationDB.Status = int8(contact_tracing.OperationStatus_COMPLETED)
+
+	// Save back to cache
+	err = t.sqlDB.Table(services.ContactTracingOperationTable).Where("id=?", longrunningID).
+		Updates(operationDB).Error
+	if err != nil {
+		t.logger.Errorf("failed to update longrunning operation: %v", err)
+		return err
+	}
+
+	return nil
+}
+
 func (t *tracingAPIServer) TraceUsersLocations(
 	ctx context.Context, traceReq *contact_tracing.TraceUsersLocationsRequest,
 ) (*contact_tracing.ContactTracingResponse, error) {
-	// request must not be nil
+	// Request must not be nil
 	if traceReq == nil {
 		return nil, services.MissingFieldError("TraceUsersLocationsRequest")
 	}
@@ -426,85 +440,68 @@ func (t *tracingAPIServer) TraceUsersLocations(
 	}
 
 	// Create stream to messaging
-	client, err := t.messagingClient.AlertContacts(ctx, grpc.WaitForReady(true))
+	client, err := t.messagingClient.AlertContacts(context.Background(), grpc.WaitForReady(true))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create stream for sending messages: %v", err)
 	}
 
-	// Create a long running operation
-	longrunningOp := &longrunning.Operation{
-		Name: fmt.Sprintf("TraceUserLocations::%s", uuid.New().String()),
-		Done: false,
-	}
+	limit := 1000
+	offset := 0
+	counties := []string{}
+	condition := true
 
-	// Marshal to bytes json
-	bs, err := json.Marshal(longrunningOp)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to marshal longrunning operation: %v", err)
-	}
+	usersDB := make([]*services.UserModel, 0, limit)
 
-	// Save operation
-	county := strings.Join(traceReq.Counties, ", ")
-	operationDB := &services.ContactTracingOperation{
-		County:      county,
-		Description: fmt.Sprintf("Cases from %s county", county),
-		Done:        false,
-		Payload:     bs,
-	}
-	err = t.sqlDB.Create(operationDB).Error
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to save operation: %v", err)
-	}
-
-	db := t.sqlDB.Select("status, full_name, phone_number, county")
-	if len(traceReq.Counties) > 0 {
-		db = db.Where("county IN(?)", traceReq.Counties)
-	}
-
-	go func() {
-		condition := true
-		limit := 1000
-		offset := 0
-		counties := []string{}
-
-		usersDB := make([]*services.UserModel, 0, limit)
-
-		for condition {
-			err = db.Find(usersDB, "status=?", int8(location.Status_POSITIVE)).Error
-			switch {
-			case err == nil:
-			default:
-				t.failLongRunningOperation(operationDB.ID, err.Error())
-				return
-			}
-
-			if len(usersDB) < limit {
-				condition = false
-			}
-
-			wg := &sync.WaitGroup{}
-
-			for _, userDB := range usersDB {
-				if userDB.Traced {
-					continue
-				}
-				// Longrunning worker
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					t.traceUserWorker(client, operationDB.ID, counties, userDB, &sinceDate)
-				}()
-			}
-
-			wg.Wait()
-
-			offset += len(usersDB)
+	for condition {
+		db := t.sqlDB.Select("status, id, full_name, phone_number, county")
+		if len(traceReq.Counties) > 0 {
+			db = db.Where("county IN(?)", traceReq.Counties)
 		}
-	}()
+		err = db.Find(usersDB, "status=?", int8(location.Status_POSITIVE)).Error
+		switch {
+		case err == nil:
+		default:
+			return nil, status.Errorf(codes.Internal, "failed to find users: %v", err)
+		}
 
-	return &contact_tracing.ContactTracingResponse{
-		OperationId: int64(operationDB.ID),
-	}, nil
+		if len(usersDB) < limit {
+			condition = false
+		}
+
+		wg := &sync.WaitGroup{}
+
+		for _, userDB := range usersDB {
+			if userDB.Traced {
+				continue
+			}
+
+			// Save operation
+			county := strings.Join(traceReq.Counties, ", ")
+			operationDB := &services.ContactTracingOperation{
+				County:      county,
+				Description: fmt.Sprintf("Cases from %s county", county),
+				Status:      int8(contact_tracing.OperationStatus_PENDING),
+				Name:        fmt.Sprintf("TraceUserLocations::%s", uuid.New().String()),
+			}
+			err = t.sqlDB.Create(operationDB).Error
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to save operation: %v", err)
+			}
+
+			// Longrunning worker
+			wg.Add(1)
+			go func(userDB *services.UserModel) {
+				defer wg.Done()
+				t.traceUserWorker(client, operationDB.ID, counties, userDB, &sinceDate)
+			}(userDB)
+		}
+
+		wg.Wait()
+
+		offset += len(usersDB)
+	}
+
+	return &contact_tracing.ContactTracingResponse{}, nil
 }
 
 func (t *tracingAPIServer) ListOperations(
@@ -515,23 +512,18 @@ func (t *tracingAPIServer) ListOperations(
 		return nil, services.NilRequestError("ListOperationsRequest")
 	}
 
-	// Validation
-	var err error
-	switch {
-	case listReq.County == "":
-		err = services.MissingFieldError("county")
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	// Parse page size and page token
 	pageNumber, pageSize := services.NormalizePage(listReq.PageToken, listReq.PageSize)
 	offset := pageNumber*pageSize - pageSize
 
+	db := t.sqlDB.Order("created_at DESC").Offset(offset).Limit(pageSize)
+	if len(listReq.Counties) > 0 {
+		db = db.Where("county IN(?)", listReq.Counties)
+	}
+
 	operationsDB := make([]*services.ContactTracingOperation, 0)
-	err = t.sqlDB.Order("created_at DESC").Offset(offset).Limit(pageSize).
-		Find(&operationsDB, "county=?", listReq.County).Error
+
+	err := db.Find(&operationsDB).Error
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get operations: %v", err)
 	}
@@ -555,17 +547,12 @@ func (t *tracingAPIServer) ListOperations(
 func getOperationPB(operationDB *services.ContactTracingOperation) (*contact_tracing.ContactTracingOperation, error) {
 	operationPB := &contact_tracing.ContactTracingOperation{
 		Id:          int64(operationDB.ID),
+		Status:      contact_tracing.OperationStatus(operationDB.Status),
 		County:      operationDB.County,
 		Description: operationDB.Description,
+		Name:        operationDB.Name,
+		Result:      operationDB.Result,
 		Timestamp:   operationDB.CreatedAt.Unix(),
-		Payload:     &longrunning.Operation{},
-	}
-
-	if len(operationDB.Payload) > 0 {
-		err := json.Unmarshal(operationDB.Payload, &operationPB.Payload)
-		if err != nil {
-			return nil, status.Error(codes.Internal, "failed to unmarshal longrunning json")
-		}
 	}
 
 	return operationPB, nil
