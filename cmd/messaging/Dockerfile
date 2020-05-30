@@ -5,7 +5,7 @@ RUN apk update && \
    update-ca-certificates && \
    rm -rf /var/cache/apk/* && \
    apk add libc6-compat
-WORKDIR /app
-COPY messaging .
 EXPOSE 80 443
-ENTRYPOINT [ "/app/messaging" ]
+WORKDIR /app
+COPY service .
+ENTRYPOINT [ "/app/service" ]
