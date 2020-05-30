@@ -4,7 +4,6 @@ package covitrace;
 
 option go_package="contact_tracing";
 
-import "google/longrunning/operations.proto";
 import "google/api/annotations.proto";
 import "protoc-gen-swagger/options/annotations.proto";
 
@@ -21,18 +20,27 @@ message TraceUsersLocationsRequest {
     string since_date = 2;
 }
 
+// OperationStatus is the status of an operation
+enum OperationStatus {
+    PENDING = 0;
+    COMPLETED = 1;
+    FAILED = 2;
+}
+
 // ContactTracingOperation is contains data for contact tracing
 message ContactTracingOperation {
     int64 id = 1;
-    string county = 2;
-    string description = 3;
-    int64 timestamp = 4;
-    google.longrunning.Operation payload = 5;
+    OperationStatus status = 2;
+    string county = 3;
+    string description = 4;
+    string name = 5;
+    string result = 6;
+    int64 timestamp = 7;
 }
 
 // ListOperationsRequest is request to get list of contact tracing operations
 message ListOperationsRequest {
-    string county = 1;
+    repeated string counties = 1;
     int32 page_token = 2;
     int32 page_size = 3;
 }
