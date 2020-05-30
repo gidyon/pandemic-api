@@ -19,19 +19,19 @@ run_gateway: ## go run server
 	go run cmd/gateway/*.go
 
 run_messaging:
-	cd cmd/messaging && go build && FCM_SERVER_KEY=abc ./messaging -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/messaging_dev.yml
+	cd cmd/messaging && go build -o service && FCM_SERVER_KEY=abc ./service -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/messaging_dev.yml
 
 run_tracing:
-	cd cmd/tracing && go build && ./tracing -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/tracing_dev.yml
+	cd cmd/tracing && go build -o service && ./service -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/tracing_dev.yml
 
 run_location:
-	cd cmd/location && go build && ./location -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/location_dev.yml
+	cd cmd/location && go build -o service && ./service -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/location_dev.yml
 
 run_rest:
-	cd cmd/restful && go build && ROOT_DIR=/home/gideon/go/src/github.com/gidyon/pandemic-api/api/json ./restful -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/restful_dev.yml
+	cd cmd/restful && go build -o service && ROOT_DIR=/home/gideon/go/src/github.com/gidyon/pandemic-api/api/json ./service -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/restful_dev.yml
 
 run_pusher:
-	cd cmd/pusher && go build && FCM_SERVER_KEY=AAAApoeNiqU:APA91bH7JMT0ITyGESfWtKzP8901ja834A_u4DP6rXw92OgujEPVJzqlL2fRyMjfU6yakaDGiGVaBBRfW-lwX7AGtBd_Ub1YZP4RMaIqCLkEZ18TD55oEReMu2ge5no1RQ5d7frrkEYW ./pusher -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/pusher_dev.yml
+	cd cmd/pusher && go build -o service && FCM_SERVER_KEY=AAAApoeNiqU:APA91bH7JMT0ITyGESfWtKzP8901ja834A_u4DP6rXw92OgujEPVJzqlL2fRyMjfU6yakaDGiGVaBBRfW-lwX7AGtBd_Ub1YZP4RMaIqCLkEZ18TD55oEReMu2ge5no1RQ5d7frrkEYW ./service -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/pusher_dev.yml
 
 # ============================================================================== 
 proto_compile_location:
@@ -52,7 +52,7 @@ proto_compile_messaging:
 proto_compile: proto_compile_location proto_compile_tracing proto_compile_messaging
 
 compile_gateway:
-	go build -i -v -o gateway $(SERVICE_PKG_BUILD)
+	go build -o service -i -v -o gateway $(SERVICE_PKG_BUILD)
 
 docker_build: ## Create a docker image for the service
 ifdef tag
