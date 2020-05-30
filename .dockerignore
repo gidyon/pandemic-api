@@ -2,4 +2,6 @@ certs/
 cmd/
 deployments/
 internal/
+pkg/
+third_party/
 Makefile
