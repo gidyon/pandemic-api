@@ -1,0 +1,32 @@
+serviceVersion: v1/beta
+serviceName: pusher_app
+servicePort: 5600
+logging:
+  level: -1
+  timeFormat: 2006-01-02T15:04:05Z07:00
+security:
+  tlsCert: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/cert.pem
+  tlsKey: /home/gideon/go/src/github.com/gidyon/pandemic-api/certs/localhost/key.pem
+  serverName: localhost
+databases:
+  sqlDatabase:
+    required: true
+    address: localhost:3306
+    host: localhost
+    port: 3306
+    user: root
+    schema: fightcovid19
+    password: hakty11
+    metadata:
+      name: mysql
+      dialect: mysql
+      orm: gorm
+  redisDatabase:
+    required: false
+    address: localhost:6379
+    host: localhost
+    port: 6379
+    metadata:
+      name: redis
+      useRediSearch: false
+
