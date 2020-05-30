@@ -2,7 +2,7 @@ PROJECT_NAME := pandemic-api
 PKG := gtuhub.com/gidyon/$(PROJECT_NAME)
 
 compile:
-	go build -i -v -o messaging .
+	go build -i -v -o service .
 
 docker_build:
 ifdef tag
