@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/gidyon/micros/utils/healthcheck"
+	location_app "github.com/gidyon/pandemic-api/internal/services/location"
+	http_error "github.com/gidyon/pandemic-api/pkg/errors"
 	"google.golang.org/grpc"
+	"net/http"
 	"os"
 	"strings"
-
-	location_app "github.com/gidyon/pandemic-api/internal/services/location"
 
 	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"github.com/gidyon/pandemic-api/pkg/api/messaging"
@@ -40,6 +42,34 @@ func main() {
 		Type:         healthcheck.ProbeLiveNess,
 		AutoMigrator: func() error { return nil },
 	}))
+
+	// Token endpoint
+	app.AddEndpointFunc("/api/v1/users/token/", func(w http.ResponseWriter, r *http.Request) {
+		phone := r.URL.Query().Get("phone_number")
+		deviceID := r.URL.Query().Get("device_token")
+
+		if phone == "" || deviceID == "" {
+			http_error.Write(w, &http_error.Error{
+				Message: "missing phone or device id",
+				Details: "missing phone or device id",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+
+		token, err := getToken(app.GormDB(), phone, deviceID)
+		if err != nil {
+			http_error.Write(w, &http_error.Error{
+				Message: "failed to get token",
+				Details: err.Error(),
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+
+		w.Header().Set("content-type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"token": token})
+	})
 
 	// Connect to external service
 	dopts := []grpc.DialOption{
