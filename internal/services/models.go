@@ -68,7 +68,7 @@ type UserModel struct {
 	FullName    string `gorm:"type:varchar(50);not null"`
 	County      string `gorm:"type:varchar(50);not null"`
 	Status      int8   `gorm:"type:tinyint(1);default:0"`
-	DeviceToken string `gorm:"type:varchar(256);not null"`
+	DeviceToken string `gorm:"type:varchar(256);not null;default:'NA'"`
 	Traced      bool   `gorm:"type:tinyint(1);default:0"`
 	gorm.Model
 }
@@ -88,6 +88,7 @@ type Message struct {
 	Message   string `gorm:"type:varchar(256);not null"`
 	Data      []byte `gorm:"type:json"`
 	Sent      bool   `gorm:"type:tinyint(1);default:0"`
+	Seen      bool   `gorm:"type:tinyint(1);default:0"`
 	Type      int8   `gorm:"type:tinyint(1);default:0"`
 	gorm.Model
 }
@@ -110,8 +111,9 @@ const ContactTracingOperationTable = "operations"
 type ContactTracingOperation struct {
 	County      string `gorm:"type:varchar(50);not null"`
 	Description string `gorm:"type:varchar(144);not null"`
-	Done        bool   `gorm:"type:tinyint(1);default:0"`
-	Payload     []byte `gorm:"type:json"`
+	Status      int8   `gorm:"type:tinyint(1);default:0"`
+	Name        string `gorm:"type:varchar(100);not null"`
+	Result      string `gorm:"type:text"`
 	gorm.Model
 }
 
