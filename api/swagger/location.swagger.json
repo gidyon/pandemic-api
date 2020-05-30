@@ -162,6 +162,37 @@
         "tags": [
           "LocationTracingAPI"
         ]
+      },
+      "patch": {
+        "summary": "Updates user status",
+        "operationId": "UpdateUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/covitraceUpdateUserRequest"
+            }
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
       }
     },
     "/api/v1/users/{phone_number}/status": {
@@ -311,6 +342,18 @@
       ],
       "default": "UNKNOWN",
       "title": "Status is user status"
+    },
+    "covitraceUpdateUserRequest": {
+      "type": "object",
+      "properties": {
+        "phone_number": {
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/definitions/covitraceUser"
+        }
+      },
+      "title": "UpdateUserRequest is request to update user account"
     },
     "covitraceUpdateUserStatusRequest": {
       "type": "object",

@@ -121,6 +121,56 @@
         ]
       }
     },
+    "/api/v1/messaging/messages/{phone_number}/newcount": {
+      "get": {
+        "summary": "Fetches how many messages are new",
+        "operationId": "GetNewMessagesCount",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceNewMessagesCount"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    },
+    "/api/v1/messaging/messages/{phone_number}/readall": {
+      "patch": {
+        "summary": "Marks all messages as read for a user",
+        "operationId": "ReadAll",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "phone_number",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Messaging"
+        ]
+      }
+    },
     "/api/v1/messaging/send": {
       "post": {
         "summary": "Sends message to a single destination",
@@ -222,26 +272,11 @@
         "device_token": {
           "type": "string"
         },
-        "contact_points": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/covitraceContactPoint"
-          }
+        "contact_time": {
+          "type": "string"
         }
       },
       "title": "ContactData contains locational contacts infomation"
-    },
-    "covitraceContactPoint": {
-      "type": "object",
-      "properties": {
-        "geo_fence_id": {
-          "type": "string"
-        },
-        "time_id": {
-          "type": "string"
-        }
-      },
-      "title": "ContactPoint is a geographic contact point at a particular time"
     },
     "covitraceMessage": {
       "type": "object",
@@ -263,6 +298,10 @@
           "format": "int64"
         },
         "sent": {
+          "type": "boolean",
+          "format": "boolean"
+        },
+        "seen": {
           "type": "boolean",
           "format": "boolean"
         },
@@ -300,6 +339,16 @@
         }
       },
       "title": "Messages is a collection of user messages"
+    },
+    "covitraceNewMessagesCount": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "title": "NewMessagesCount contains the count of new messages"
     },
     "covitraceSendMessageResponse": {
       "type": "object",
