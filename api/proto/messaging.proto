@@ -17,18 +17,12 @@ message ContactData {
     string full_name = 3;
     string patient_phone = 4;
     string device_token = 5;
-    repeated ContactPoint contact_points = 6;
+    string contact_time = 6;
 }
 
 // BroadCastMessageResponse is response after a message has been broadcasted containing the broadcast id
 message BroadCastMessageResponse {
     string broadcast_message_id = 1;
-}
-
-// ContactPoint is a geographic contact point at a particular time
-message ContactPoint {
-    string geo_fence_id = 1;
-    string time_id = 2;
 }
 
 // BroadCastMessageFilter is type filter for broadcast messages
@@ -65,8 +59,9 @@ message Message {
     string notification = 4;
     int64 timestamp = 5;
     bool sent = 6;
-    MessageType type = 7;
-    map<string, string> data = 8;
+    bool seen = 7;
+    MessageType type = 8;
+    map<string, string> data = 9;
 }
 
 // SendMessageResponse is response after sending message contains message id
@@ -85,6 +80,16 @@ message ListMessagesRequest {
 // Messages is a collection of user messages
 message Messages {
     repeated Message messages = 1;
+}
+
+// MessageRequest is request to fetch or perform action to messages owned by user
+message MessageRequest {
+    string phone_number = 1;
+}
+
+// NewMessagesCount contains the count of new messages
+message NewMessagesCount {
+    int32 count = 1;
 }
 
 // Sends messages to devices and destinations
@@ -125,6 +130,22 @@ service Messaging {
         // Everything maps to the body of the request
         option (google.api.http) = {
             get: "/api/v1/messaging/messages/{phone_number}"
+        };
+    };
+
+    // Marks all messages as read for a user
+    rpc ReadAll (MessageRequest) returns (google.protobuf.Empty) {
+        // // Maps to HTTP PATCH
+        option (google.api.http) = {
+            patch: "/api/v1/messaging/messages/{phone_number}/readall"
+        };
+    };
+
+    // Fetches how many messages are new
+    rpc GetNewMessagesCount (MessageRequest) returns (NewMessagesCount) {
+        // Maps to HTTP GET
+        option (google.api.http) = {
+            get: "/api/v1/messaging/messages/{phone_number}/newcount"
         };
     };
 }
