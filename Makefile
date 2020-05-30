@@ -30,6 +30,9 @@ run_location:
 run_rest:
 	cd cmd/restful && go build && ROOT_DIR=/home/gideon/go/src/github.com/gidyon/pandemic-api/api/json ./restful -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/restful_dev.yml
 
+run_pusher:
+	cd cmd/pusher && go build && FCM_SERVER_KEY=AAAApoeNiqU:APA91bH7JMT0ITyGESfWtKzP8901ja834A_u4DP6rXw92OgujEPVJzqlL2fRyMjfU6yakaDGiGVaBBRfW-lwX7AGtBd_Ub1YZP4RMaIqCLkEZ18TD55oEReMu2ge5no1RQ5d7frrkEYW ./pusher -config-file=/home/gideon/go/src/github.com/gidyon/pandemic-api/configs/pusher_dev.yml
+
 # ============================================================================== 
 proto_compile_location:
 	protoc -I=$(API_IN_PATH) -I=third_party --go_out=plugins=grpc:$(API_OUT_PATH)/location location.proto &&\
