@@ -11,8 +11,8 @@ security:
 databases:
   sqlDatabase:
     required: true
-    address: 192.168.100.10:3306
-    host: 192.168.100.10
+    address: localhost:3306
+    host: localhost
     port: 3306
     user: root
     schema: fightcovid19
@@ -30,8 +30,8 @@ databases:
       orm: gorm
   redisDatabase:
     required: false
-    address: 192.168.100.10:6379
-    host: 192.168.100.10
+    address: localhost:6379
+    host: localhost
     port: 6379
     # required: true
     # address: ec2-3-21-234-210.us-east-2.compute.amazonaws.com:30900

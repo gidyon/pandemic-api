@@ -2,7 +2,7 @@ PROJECT_NAME := pandemic-api
 PKG := gtuhub.com/gidyon/$(PROJECT_NAME)
 
 compile:
-	go build -i -v -o restful .
+	go build -i -v -o service .
 
 copy_dir:
 	cp -r /home/gideon/go/src/github.com/gidyon/pandemic-api/api/json .

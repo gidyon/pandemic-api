@@ -86,8 +86,16 @@ message ListUsersRequest {
     Status filter_status = 3;
 }
 
-// ListUsersResponse is response after fetching users
-message ListUsersResponse {
+// SearchUsersRequest is request to search for users
+message SearchUsersRequest {
+    int32 page_size = 1;
+    int32 page_token = 2;
+    string query = 3;
+    Status filter_status = 4;
+}
+
+// Users is response after fetching users
+message Users {
     repeated User users = 1;
     int32 next_page_token = 2;
 }
@@ -124,7 +132,7 @@ service LocationTracingAPI {
         };
     };
 
-    // Updates user status
+    // Updates user data
     rpc UpdateUser (UpdateUserRequest) returns (google.protobuf.Empty) {
         // Maps to HTTP PATCH
         // Everything maps to the body of the request
@@ -154,11 +162,19 @@ service LocationTracingAPI {
     };
 
     // Retrieves a collection of users
-    rpc ListUsers (ListUsersRequest) returns (ListUsersResponse) {
+    rpc ListUsers (ListUsersRequest) returns (Users) {
         // Maps to HTTP GET
-        // phone_number is passed as url path parameter
         option (google.api.http) = {
             get: "/api/v1/users/action/list"
+        };
+    };
+    
+    // Searches for users using phone number or full names
+    rpc SearchUsers (SearchUsersRequest) returns (Users) {
+        // Maps to HTTP GET
+        // search query is passed as url path parameter
+        option (google.api.http) = {
+            get: "/api/v1/users/action/search"
         };
     };
 }

@@ -100,7 +100,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/covitraceListUsersResponse"
+              "$ref": "#/definitions/covitraceUsers"
             }
           }
         },
@@ -118,6 +118,59 @@
             "required": false,
             "type": "integer",
             "format": "int32"
+          },
+          {
+            "name": "filter_status",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "POSITIVE",
+              "NEGATIVE",
+              "SUSPECTED",
+              "RECOVERED"
+            ],
+            "default": "UNKNOWN"
+          }
+        ],
+        "tags": [
+          "LocationTracingAPI"
+        ]
+      }
+    },
+    "/api/v1/users/action/search": {
+      "get": {
+        "summary": "Searches for users using phone number or full names",
+        "operationId": "SearchUsers",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/covitraceUsers"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "type": "string"
           },
           {
             "name": "filter_status",
@@ -164,7 +217,7 @@
         ]
       },
       "patch": {
-        "summary": "Updates user status",
+        "summary": "Updates user data",
         "operationId": "UpdateUser",
         "responses": {
           "200": {
@@ -238,22 +291,6 @@
         }
       },
       "title": "AddUserRequest is request to add a user"
-    },
-    "covitraceListUsersResponse": {
-      "type": "object",
-      "properties": {
-        "users": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/covitraceUser"
-          }
-        },
-        "next_page_token": {
-          "type": "integer",
-          "format": "int32"
-        }
-      },
-      "title": "ListUsersResponse is response after fetching users"
     },
     "covitraceLocation": {
       "type": "object",
@@ -395,6 +432,22 @@
         }
       },
       "title": "User is an app user"
+    },
+    "covitraceUsers": {
+      "type": "object",
+      "properties": {
+        "users": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/covitraceUser"
+          }
+        },
+        "next_page_token": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "title": "Users is response after fetching users"
     }
   }
 }

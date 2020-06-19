@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 
 	messaging "github.com/gidyon/pandemic-api/pkg/api/messaging"
@@ -77,6 +78,36 @@ func (_m *MessagingClientMock) BroadCastMessage(ctx context.Context, in *messagi
 	return r0, r1
 }
 
+// GetNewMessagesCount provides a mock function with given fields: ctx, in, opts
+func (_m *MessagingClientMock) GetNewMessagesCount(ctx context.Context, in *messaging.MessageRequest, opts ...grpc.CallOption) (*messaging.NewMessagesCount, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *messaging.NewMessagesCount
+	if rf, ok := ret.Get(0).(func(context.Context, *messaging.MessageRequest, ...grpc.CallOption) *messaging.NewMessagesCount); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*messaging.NewMessagesCount)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *messaging.MessageRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ListMessages provides a mock function with given fields: ctx, in, opts
 func (_m *MessagingClientMock) ListMessages(ctx context.Context, in *messaging.ListMessagesRequest, opts ...grpc.CallOption) (*messaging.Messages, error) {
 	_va := make([]interface{}, len(opts))
@@ -99,6 +130,36 @@ func (_m *MessagingClientMock) ListMessages(ctx context.Context, in *messaging.L
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *messaging.ListMessagesRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ReadAll provides a mock function with given fields: ctx, in, opts
+func (_m *MessagingClientMock) ReadAll(ctx context.Context, in *messaging.MessageRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *empty.Empty
+	if rf, ok := ret.Get(0).(func(context.Context, *messaging.MessageRequest, ...grpc.CallOption) *empty.Empty); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*empty.Empty)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *messaging.MessageRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)

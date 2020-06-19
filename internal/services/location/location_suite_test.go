@@ -31,9 +31,9 @@ var (
 )
 
 const (
-	dbAddress    = "192.168.100.10:3306"
+	dbAddress    = "localhost:3306"
 	schema       = "fightcovid19"
-	redisAddress = "192.168.100.10:6379"
+	redisAddress = "localhost:6379"
 )
 
 func startDB() (*gorm.DB, error) {

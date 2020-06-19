@@ -12,8 +12,8 @@ import (
 
 	"github.com/gidyon/pandemic-api/pkg/api/messaging"
 
-	"github.com/gidyon/config"
 	"github.com/gidyon/micros"
+	"github.com/gidyon/micros/pkg/config"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -41,25 +41,24 @@ func main() {
 		AutoMigrator: func() error { return nil },
 	}))
 
-	// FCM client
-	fcmClient, err := fcm.NewClient(os.Getenv("FCM_SERVER_KEY"))
-	handleErr(err)
+	app.Start(ctx, func() error {
+		// FCM client
+		fcmClient, err := fcm.NewClient(os.Getenv("FCM_SERVER_KEY"))
+		handleErr(err)
 
-	// Create messaging tracing instance
-	messagingAPI, err := messaging_app.NewMessagingServer(ctx, &messaging_app.Options{
-		SQLDB:     app.GormDB(),
-		FCMClient: fcmClient,
-		Logger:    app.Logger(),
+		// Create messaging tracing instance
+		messagingAPI, err := messaging_app.NewMessagingServer(ctx, &messaging_app.Options{
+			SQLDB:     app.GormDB(),
+			FCMClient: fcmClient,
+			Logger:    app.Logger(),
+		})
+		handleErr(err)
+
+		messaging.RegisterMessagingServer(app.GRPCServer(), messagingAPI)
+		handleErr(messaging.RegisterMessagingHandlerServer(ctx, app.RuntimeMux(), messagingAPI))
+
+		return nil
 	})
-	handleErr(err)
-
-	// Initialize grpc server
-	handleErr(app.InitGRPC(ctx))
-
-	messaging.RegisterMessagingServer(app.GRPCServer(), messagingAPI)
-	handleErr(messaging.RegisterMessagingHandlerServer(ctx, app.RuntimeMux(), messagingAPI))
-
-	handleErr(app.Run(ctx))
 }
 
 func setIfempty(val1, val2 string, swap ...bool) string {

@@ -453,11 +453,13 @@ func (t *tracingAPIServer) TraceUsersLocations(
 	usersDB := make([]*services.UserModel, 0, limit)
 
 	for condition {
+		usersDB = make([]*services.UserModel, 0, limit)
+
 		db := t.sqlDB.Select("status, id, full_name, phone_number, county")
 		if len(traceReq.Counties) > 0 {
 			db = db.Where("county IN(?)", traceReq.Counties)
 		}
-		err = db.Find(usersDB, "status=?", int8(location.Status_POSITIVE)).Error
+		err = db.Find(&usersDB, "status=?", int8(location.Status_POSITIVE)).Error
 		switch {
 		case err == nil:
 		default:
@@ -476,10 +478,9 @@ func (t *tracingAPIServer) TraceUsersLocations(
 			}
 
 			// Save operation
-			county := strings.Join(traceReq.Counties, ", ")
 			operationDB := &services.ContactTracingOperation{
-				County:      county,
-				Description: fmt.Sprintf("Cases from %s county", county),
+				County:      userDB.County,
+				Description: fmt.Sprintf("%s - %s", userDB.FullName, userDB.PhoneNumber),
 				Status:      int8(contact_tracing.OperationStatus_PENDING),
 				Name:        fmt.Sprintf("TraceUserLocations::%s", uuid.New().String()),
 			}

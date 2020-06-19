@@ -7,8 +7,10 @@ import (
 	"github.com/gidyon/pandemic-api/internal/auth"
 	"github.com/gidyon/pandemic-api/internal/services/location/conversion"
 	"github.com/gidyon/pandemic-api/pkg/api/messaging"
+	hashids "github.com/speps/go-hashids"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
+	"strings"
 	"time"
 
 	services "github.com/gidyon/pandemic-api/internal/services"
@@ -33,6 +35,7 @@ type locationAPIServer struct {
 	logsDB          *gorm.DB
 	eventsDB        *redis.Client
 	logger          grpclog.LoggerV2
+	hasher          *hashids.HashID
 	messagingClient messaging.MessagingClient
 	realtimeAlerts  bool
 	authorize       func(context.Context, string) error
@@ -46,6 +49,10 @@ type Options struct {
 	Logger          grpclog.LoggerV2
 	MessagingClient messaging.MessagingClient
 	RealTimeAlerts  bool
+}
+
+func newHasher(salt string) (*hashids.HashID, error) {
+	return nil, nil
 }
 
 // NewLocationTracing creates a new location tracing API
@@ -68,7 +75,7 @@ func NewLocationTracing(ctx context.Context, opt *Options) (location.LocationTra
 		return nil, err
 	}
 
-	locationManager := &locationAPIServer{
+	lapi := &locationAPIServer{
 		logsDB:          opt.LogsDB,
 		eventsDB:        opt.EventsDB,
 		logger:          opt.Logger,
@@ -79,12 +86,18 @@ func NewLocationTracing(ctx context.Context, opt *Options) (location.LocationTra
 	}
 
 	// Automigration
-	err = locationManager.logsDB.AutoMigrate(&services.LocationModel{}, &services.UserModel{}).Error
+	err = lapi.logsDB.AutoMigrate(&services.LocationModel{}, &services.UserModel{}).Error
 	if err != nil {
 		return nil, err
 	}
 
-	return locationManager, nil
+	// Create a full text search index
+	err = services.CreateFullTextIndex(lapi.logsDB, services.UsersTable, "phone_number, full_name")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create full text index: %v", err)
+	}
+
+	return lapi, nil
 }
 
 const (
@@ -120,8 +133,8 @@ func getUserSetKeyToday(userID string) string {
 	return fmt.Sprintf("%s:%s", userID, date)
 }
 
-func (locationManager *locationAPIServer) validateAndSaveLocation(
-	sendReq *location.SendLocationRequest, notifyUser bool,
+func (lapi *locationAPIServer) validateAndSaveLocation(
+	ctx context.Context, sendReq *location.SendLocationRequest, notifyUser bool,
 ) error {
 	locationPB := sendReq.GetLocation()
 	err := validateLocation(locationPB)
@@ -144,8 +157,8 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(
 	key := getUserSetKeyToday(sendReq.UserId)
 
 	// Add to set
-	_, err = locationManager.eventsDB.SAdd(
-		key, fmt.Sprintf("%s:%s", locationPB.GetGeoFenceId(), locationPB.GetTimeId()),
+	_, err = lapi.eventsDB.SAdd(
+		ctx, key, fmt.Sprintf("%s:%s", locationPB.GetGeoFenceId(), locationPB.GetTimeId()),
 	).Result()
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to add location to set: %v", err)
@@ -153,15 +166,15 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(
 
 	if sendReq.StatusId == location.Status_POSITIVE {
 		// Add to blacklist
-		err = locationManager.eventsDB.SAdd(
-			getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
+		err = lapi.eventsDB.SAdd(
+			ctx, getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
 		).Err()
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to add location to set: %v", err)
 		}
 	} else {
 		if notifyUser {
-			go locationManager.sendUserAlert(locationPB, sendReq.UserId)
+			go lapi.sendUserAlert(locationPB, sendReq.UserId)
 		}
 	}
 
@@ -171,7 +184,7 @@ func (locationManager *locationAPIServer) validateAndSaveLocation(
 	locationDB.UserID = sendReq.UserId
 
 	// Add to database
-	err = locationManager.logsDB.Create(locationDB).Error
+	err = lapi.logsDB.Create(locationDB).Error
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to add location to db: %v", err)
 	}
@@ -187,21 +200,21 @@ func getAlertGeoFenceID(loc *location.Location) string {
 	return conversion.GeoFenceID(loc, alertRadius)
 }
 
-func (locationManager *locationAPIServer) sendUserAlert(loc *location.Location, phoneNumber string) {
+func (lapi *locationAPIServer) sendUserAlert(loc *location.Location, phoneNumber string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	danger, err := locationManager.eventsDB.SIsMember(
-		getTimeKey(loc.GetTimeId()), getAlertGeoFenceID(loc),
+	danger, err := lapi.eventsDB.SIsMember(
+		ctx, getTimeKey(loc.GetTimeId()), getAlertGeoFenceID(loc),
 	).Result()
 	if err != nil {
-		locationManager.logger.Errorf("failed to get cases: %v", err)
+		lapi.logger.Errorf("failed to get cases: %v", err)
 		return
 	}
 
 	if danger {
 		// Send message to user
-		_, err = locationManager.messagingClient.SendMessage(ctx, &messaging.Message{
+		_, err = lapi.messagingClient.SendMessage(ctx, &messaging.Message{
 			UserPhone:    phoneNumber,
 			Title:        "COVID-19 Social Distancing Alert",
 			Notification: "You are currently in an area with a COVID-19 cases. Ensure you maintain social distance",
@@ -209,13 +222,13 @@ func (locationManager *locationAPIServer) sendUserAlert(loc *location.Location, 
 			Type:         messaging.MessageType_ALERT,
 		}, grpc.WaitForReady(true))
 		if err != nil {
-			locationManager.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
+			lapi.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
 			return
 		}
 	}
 }
 
-func (locationManager *locationAPIServer) SendLocation(
+func (lapi *locationAPIServer) SendLocation(
 	ctx context.Context, sendReq *location.SendLocationRequest,
 ) (*empty.Empty, error) {
 	// Request must not be nil
@@ -224,12 +237,12 @@ func (locationManager *locationAPIServer) SendLocation(
 	}
 
 	// Authenticate request
-	err := locationManager.authenticate(ctx)
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	err = locationManager.validateAndSaveLocation(sendReq, locationManager.realtimeAlerts)
+	err = lapi.validateAndSaveLocation(ctx, sendReq, lapi.realtimeAlerts)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +250,7 @@ func (locationManager *locationAPIServer) SendLocation(
 	return &empty.Empty{}, nil
 }
 
-func (locationManager *locationAPIServer) SendLocations(
+func (lapi *locationAPIServer) SendLocations(
 	ctx context.Context, sendReq *location.SendLocationsRequest,
 ) (*empty.Empty, error) {
 	// Request must not be nil
@@ -246,7 +259,7 @@ func (locationManager *locationAPIServer) SendLocations(
 	}
 
 	// Authenticate request
-	err := locationManager.authenticate(ctx)
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -270,22 +283,22 @@ func (locationManager *locationAPIServer) SendLocations(
 	)
 	// Validate and save locations
 	for _, locationPB := range sendReq.Locations {
-		err = locationManager.validateAndSaveLocation(&location.SendLocationRequest{
+		err = lapi.validateAndSaveLocation(ctx, &location.SendLocationRequest{
 			UserId:   sendReq.UserId,
 			StatusId: sendReq.StatusId,
 			Location: locationPB,
 		}, false)
 		if err != nil {
-			locationManager.logger.Errorf("error while saving user locations: %v", err)
+			lapi.logger.Errorf("error while saving user locations: %v", err)
 			continue
 		}
 
 		// Check if there exist case
-		danger, err := locationManager.eventsDB.SIsMember(
-			getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
+		danger, err := lapi.eventsDB.SIsMember(
+			ctx, getTimeKey(locationPB.GetTimeId()), getAlertGeoFenceID(locationPB),
 		).Result()
 		if err != nil {
-			locationManager.logger.Errorf("error checking for regional alerts: %v", err)
+			lapi.logger.Errorf("error checking for regional alerts: %v", err)
 			continue
 		}
 		if danger {
@@ -299,14 +312,14 @@ func (locationManager *locationAPIServer) SendLocations(
 		}
 	}
 
-	if shouldNotify && locationManager.realtimeAlerts {
+	if shouldNotify && lapi.realtimeAlerts {
 
 		// Send user a notification
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			_, err := locationManager.messagingClient.SendMessage(ctx, &messaging.Message{
+			_, err := lapi.messagingClient.SendMessage(ctx, &messaging.Message{
 				UserPhone: sendReq.UserId,
 				Title:     "COVID-19 Social Distancing Warning",
 				Notification: fmt.Sprintf(
@@ -318,7 +331,7 @@ func (locationManager *locationAPIServer) SendLocations(
 				Data:      map[string]string{"sender": "location_api"},
 			}, grpc.WaitForReady(true))
 			if err != nil {
-				locationManager.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
+				lapi.logger.Errorf("failed to send user message on aerial covid-19 case: %v", err)
 			}
 		}()
 	}
@@ -328,7 +341,7 @@ func (locationManager *locationAPIServer) SendLocations(
 
 const infectedUsers = "infected:users"
 
-func (locationManager *locationAPIServer) UpdateUserStatus(
+func (lapi *locationAPIServer) UpdateUserStatus(
 	ctx context.Context, updateReq *location.UpdateUserStatusRequest,
 ) (*empty.Empty, error) {
 	// Request must not be nil
@@ -337,7 +350,7 @@ func (locationManager *locationAPIServer) UpdateUserStatus(
 	}
 
 	// Authorization
-	err := locationManager.authorize(ctx, updateReq.PhoneNumber)
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +366,7 @@ func (locationManager *locationAPIServer) UpdateUserStatus(
 		return nil, err
 	}
 
-	tx := locationManager.logsDB.Begin()
+	tx := lapi.logsDB.Begin()
 	defer func() {
 		if err := recover(); err != nil {
 			tx.Rollback()
@@ -372,7 +385,7 @@ func (locationManager *locationAPIServer) UpdateUserStatus(
 
 	// Add user to list of users with COVID-19
 	if updateReq.GetStatus() == location.Status_POSITIVE {
-		_, err = locationManager.eventsDB.LPush(infectedUsers, updateReq.PhoneNumber).Result()
+		_, err = lapi.eventsDB.LPush(ctx, infectedUsers, updateReq.PhoneNumber).Result()
 		if err != nil {
 			tx.Rollback()
 			return nil, status.Errorf(codes.Internal, "failed to add users to list of infected users: %v", err)
@@ -387,7 +400,7 @@ func (locationManager *locationAPIServer) UpdateUserStatus(
 	return &empty.Empty{}, nil
 }
 
-func (locationManager *locationAPIServer) UpdateUser(
+func (lapi *locationAPIServer) UpdateUser(
 	ctx context.Context, updateReq *location.UpdateUserRequest,
 ) (*empty.Empty, error) {
 	// Request must not be nil
@@ -396,7 +409,7 @@ func (locationManager *locationAPIServer) UpdateUser(
 	}
 
 	// Authorization
-	err := locationManager.authorize(ctx, updateReq.PhoneNumber)
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +431,7 @@ func (locationManager *locationAPIServer) UpdateUser(
 	}
 
 	// Update status in database
-	err = locationManager.logsDB.Table(services.UsersTable).Omit("status").
+	err = lapi.logsDB.Table(services.UsersTable).Omit("status").
 		Where("phone_number=?", updateReq.PhoneNumber).Updates(userDB).Error
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to update user status: %v", err)
@@ -427,7 +440,7 @@ func (locationManager *locationAPIServer) UpdateUser(
 	return &empty.Empty{}, nil
 }
 
-func (locationManager *locationAPIServer) AddUser(
+func (lapi *locationAPIServer) AddUser(
 	ctx context.Context, addReq *location.AddUserRequest,
 ) (*empty.Empty, error) {
 	// Request must not be  nil
@@ -457,11 +470,11 @@ func (locationManager *locationAPIServer) AddUser(
 	}
 
 	// If user already exists, performs an update
-	alreadyExists := !locationManager.logsDB.
+	alreadyExists := !lapi.logsDB.
 		First(&services.UserModel{}, "phone_number=?", addReq.User.PhoneNumber).RecordNotFound()
 
 	if alreadyExists {
-		err = locationManager.logsDB.Table(services.UsersTable).Where("phone_number=?", addReq.User.PhoneNumber).
+		err = lapi.logsDB.Table(services.UsersTable).Where("phone_number=?", addReq.User.PhoneNumber).
 			Omit("traced").Updates(userModel).Error
 		switch {
 		case err == nil:
@@ -471,7 +484,7 @@ func (locationManager *locationAPIServer) AddUser(
 	} else {
 		// Reset their status to unknown
 		addReq.User.Status = location.Status_UNKNOWN
-		err = locationManager.logsDB.Create(userModel).Error
+		err = lapi.logsDB.Create(userModel).Error
 		switch {
 		case err == nil:
 		default:
@@ -479,7 +492,7 @@ func (locationManager *locationAPIServer) AddUser(
 		}
 
 		// Send user a welcome notification
-		_, err := locationManager.messagingClient.SendMessage(ctx, &messaging.Message{
+		_, err := lapi.messagingClient.SendMessage(ctx, &messaging.Message{
 			UserPhone:    userModel.PhoneNumber,
 			Title:        fmt.Sprintf("Hello %s", userModel.FullName),
 			Notification: "Welcome to KoviTrace application.\nYou can do self-screening assessment, get qualitative information about COVID-19 and most important you will be notified in case you come into close contact with someone who has tested postive for COVID-19.",
@@ -488,7 +501,7 @@ func (locationManager *locationAPIServer) AddUser(
 			Data:         map[string]string{"sender": "location_api"},
 		}, grpc.WaitForReady(true))
 		if err != nil {
-			locationManager.logger.Errorf("failed to send user welcome message: %v", err)
+			lapi.logger.Errorf("failed to send user welcome message: %v", err)
 		}
 	}
 
@@ -499,7 +512,7 @@ func (locationManager *locationAPIServer) AddUser(
 	return &empty.Empty{}, nil
 }
 
-func (locationManager *locationAPIServer) GetUser(
+func (lapi *locationAPIServer) GetUser(
 	ctx context.Context, getReq *location.GetUserRequest,
 ) (*location.User, error) {
 	// Requets must not be nil
@@ -507,8 +520,8 @@ func (locationManager *locationAPIServer) GetUser(
 		return nil, services.NilRequestError("GetUserRequest")
 	}
 
-	// Authorization
-	err := locationManager.authorize(ctx, getReq.PhoneNumber)
+	// Authentication
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -519,7 +532,7 @@ func (locationManager *locationAPIServer) GetUser(
 
 	// Get from database
 	userDB := &services.UserModel{}
-	err = locationManager.logsDB.First(userDB, "phone_number=?", getReq.PhoneNumber).Error
+	err = lapi.logsDB.First(userDB, "phone_number=?", getReq.PhoneNumber).Error
 	switch {
 	case err == nil:
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -539,23 +552,24 @@ func (locationManager *locationAPIServer) GetUser(
 	return userPB, nil
 }
 
-func (locationManager *locationAPIServer) ListUsers(
+func (lapi *locationAPIServer) ListUsers(
 	ctx context.Context, listReq *location.ListUsersRequest,
-) (*location.ListUsersResponse, error) {
+) (*location.Users, error) {
 	// Request must not be nil
 	if listReq == nil {
 		return nil, services.NilRequestError("ListUsersRequest")
 	}
 
-	err := locationManager.authenticate(ctx)
+	// Authenticate the request
+	err := lapi.authenticate(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	pageNumber, pageSize := normalizePage(listReq.PageToken, listReq.PageSize)
-	offset := pageNumber*pageSize - pageSize
+	// Normalize page
+	pageToken, pageSize := normalizePageSize(listReq.PageToken, listReq.PageSize)
 
-	db := locationManager.logsDB.Offset(offset).Limit(pageSize)
+	db := lapi.logsDB.Order("id, created_at ASC").Where("id>?", pageToken).Limit(pageSize)
 	if listReq.FilterStatus != location.Status_UNKNOWN {
 		db = db.Where("status=?", int8(listReq.FilterStatus))
 	}
@@ -575,25 +589,86 @@ func (locationManager *locationAPIServer) ListUsers(
 			return nil, err
 		}
 		usersPB = append(usersPB, userPB)
+		pageToken = int(userDB.ID)
 	}
 
-	return &location.ListUsersResponse{
+	return &location.Users{
 		Users:         usersPB,
-		NextPageToken: int32(pageNumber + 1),
+		NextPageToken: int32(pageToken),
+	}, nil
+}
+
+func (lapi *locationAPIServer) SearchUsers(
+	ctx context.Context, searchReq *location.SearchUsersRequest,
+) (*location.Users, error) {
+	// Request must not be nil
+	if searchReq == nil {
+		return nil, services.NilRequestError("SearchUsersRequest")
+	}
+
+	// Authenticate the request
+	err := lapi.authenticate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// For empty queries
+	if searchReq.Query == "" {
+		return &location.Users{
+			Users: []*location.User{},
+		}, nil
+	}
+
+	// Normalize page
+	pageToken, pageSize := normalizePageSize(searchReq.PageToken, searchReq.PageSize)
+
+	searchReq.Query = strings.ReplaceAll(searchReq.Query, "+", "")
+
+	parsedQuery := services.ParseQuery(searchReq.Query, "+", "users", "users")
+
+	usersDB := make([]*services.UserModel, 0, pageSize)
+
+	db := lapi.logsDB.Unscoped().Limit(pageSize).Order("id, created_at ASC").
+		Where("id>?", pageToken)
+	if searchReq.FilterStatus != location.Status_UNKNOWN {
+		db = db.Where("status=?", int8(searchReq.FilterStatus))
+	}
+
+	err = db.Find(&usersDB, "MATCH(phone_number, full_name) AGAINST(? IN BOOLEAN MODE)", parsedQuery).Error
+	switch {
+	case err == nil:
+	default:
+		return nil, status.Errorf(codes.Internal, "failed to search users: %v", err)
+	}
+
+	// Populate response
+	usersPB := make([]*location.User, 0, len(usersDB))
+
+	for _, userDB := range usersDB {
+		userPB, err := getUserPB(userDB)
+		if err != nil {
+			return nil, err
+		}
+		usersPB = append(usersPB, userPB)
+	}
+
+	return &location.Users{
+		NextPageToken: int32(pageToken),
+		Users:         usersPB,
 	}, nil
 }
 
 const defaultPageSize = 10
 
-func normalizePage(pageToken, pageSize int32) (int, int) {
+func normalizePageSize(pageToken, pageSize int32) (int, int) {
 	if pageToken <= 0 {
-		pageToken = 1
+		pageToken = 0
 	}
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}
-	if pageSize > 20 {
-		pageSize = 20
+	if pageSize > defaultPageSize {
+		pageSize = defaultPageSize
 	}
 	return int(pageToken), int(pageSize)
 }

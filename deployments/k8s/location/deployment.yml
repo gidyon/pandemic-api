@@ -14,8 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-api-location
-        image: gidyon/pandemic-api-location:v0.6
-        args: ["--config-file", "/app/configs/config.yml"]
+        image: gidyon/pandemic-api-location:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 443
@@ -26,7 +25,7 @@ spec:
           value: "false"
         readinessProbe: # Checks that the container is started
           httpGet:
-            path: /api/v1/locations/readyq/
+            path: /api/v1/locations/health/ready
             scheme: HTTPS
             port: 443
           initialDelaySeconds: 5
@@ -35,7 +34,7 @@ spec:
           failureThreshold: 3
         livenessProbe: # Checks that the container is running
           httpGet:
-            path: /api/v1/locations/liveq/
+            path: /api/v1/locations/health/live
             scheme: HTTPS
             port: 443
           initialDelaySeconds: 5

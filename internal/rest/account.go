@@ -8,7 +8,6 @@ import (
 	"github.com/gidyon/pandemic-api/internal/services"
 	"github.com/gidyon/pandemic-api/pkg/api/location"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -506,25 +505,15 @@ func (accountAPI *accountAPI) AddUsersFromFile(w http.ResponseWriter, r *http.Re
 	}
 
 	// get file from request
-	file, _, err := r.FormFile(urlQueryKeyFormFile)
+	file, header, err := r.FormFile(urlQueryKeyFormFile)
 	if err != nil {
 		http_error.Write(w, http_error.New("failed to retrieve form", err, http.StatusInternalServerError))
 		return
 	}
 	defer file.Close()
 
-	// read file contents
-	bs, err := ioutil.ReadAll(file)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// detect content-type
-	ctype := http.DetectContentType(bs)
-
-	if ctype != "text/csv" {
-		http_error.Write(w, http_error.New("only csv file is supported", nil, http.StatusBadRequest))
+	if !strings.HasSuffix(header.Filename, ".csv") {
+		http_error.Write(w, http_error.New("only csv are allowed", err, http.StatusBadRequest))
 		return
 	}
 
@@ -544,12 +533,17 @@ func (accountAPI *accountAPI) AddUsersFromFile(w http.ResponseWriter, r *http.Re
 
 	for {
 		record, err := usersReader.Read()
-		if err != io.EOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			http_error.Write(w, http_error.New("failed to read from csv file", err, http.StatusInternalServerError))
 			return
+		}
+
+		if len(record) != 3 {
+			logrus.Warning("skipping record due to malformed content")
+			continue
 		}
 
 		fullName := record[0]
@@ -575,17 +569,17 @@ func (accountAPI *accountAPI) AddUsersFromFile(w http.ResponseWriter, r *http.Re
 			switch {
 			case err == nil:
 			default:
-				http_error.Write(w, http_error.New("failed to save user", err, http.StatusInternalServerError))
+				http_error.Write(w, http_error.New("failed to update user", err, http.StatusInternalServerError))
 				tx.Rollback()
 				return
 			}
 		} else {
 			// Save user
-			err = accountAPI.sqlDB.Save(userDB).Error
+			err = accountAPI.sqlDB.Create(userDB).Error
 			switch {
 			case err == nil:
 			default:
-				http_error.Write(w, http_error.New("failed to update user", err, http.StatusInternalServerError))
+				http_error.Write(w, http_error.New("failed to create user", err, http.StatusInternalServerError))
 				tx.Rollback()
 				return
 			}
@@ -599,5 +593,5 @@ func (accountAPI *accountAPI) AddUsersFromFile(w http.ResponseWriter, r *http.Re
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("all records saved successffulyy"))
+	json.NewEncoder(w).Encode(map[string]string{"message": "all records saved successffuly"})
 }

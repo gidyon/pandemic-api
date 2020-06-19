@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-restful
-        image: gidyon/pandemic-api-restful:v0.4
+        image: gidyon/pandemic-api-restful:v0.44
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:
@@ -43,7 +43,7 @@ spec:
           name: restful-v1
       - name: mysql-creds
         secret:
-          secretName: mysql-credentials
+          secretName: mysql-creds
 
 ---
 apiVersion: "autoscaling/v2beta1"

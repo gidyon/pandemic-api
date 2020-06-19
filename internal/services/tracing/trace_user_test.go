@@ -96,7 +96,7 @@ var _ = Describe("Tracing user after being infected with COVID-19 £trace", func
 
 			Describe("Trace userWorker method", func() {
 				It("shoould run and finish with success", func() {
-					TracingServer.traceUserWorker(nil, uint(operationID), []string{}, userDB, sinceDate)
+					TracingServer.traceUserWorker(AlertStream, uint(operationID), []string{}, userDB, sinceDate)
 				})
 			})
 		})

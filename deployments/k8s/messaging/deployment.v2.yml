@@ -1,50 +1,53 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pandemic-api-tracing
+  name: pandemic-api-messaging
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pandemic-api-tracing
+      app: pandemic-api-messaging
   template:
     metadata:
       labels:
-        app: pandemic-api-tracing
+        app: pandemic-api-messaging
     spec:
       containers:
-      - name: pandemic-api-tracing
-        image: gidyon/pandemic-api-tracing:v0.62
+      - name: pandemic-api-messaging
+        image: gidyon/pandemic-api-messaging:v0.8
         args: ["--config-file", "/app/configs/config.yml"]
         imagePullPolicy: Always
         ports:
-        - containerPort: 5600
+        - containerPort: 443
           name: https
           protocol: TCP
-        readinessProbe: # Checks that the container is started
-          httpGet:
-            path: /api/v1/trace/readyq/
-            scheme: HTTPS
-            port: 443
-          initialDelaySeconds: 5
-          timeoutSeconds: 1
-          periodSeconds: 10
-          failureThreshold: 3
-        livenessProbe: # Checks that the container is running
-          httpGet:
-            path: /api/v1/trace/liveq/
-            scheme: HTTPS
-            port: 443
-          initialDelaySeconds: 5
-          timeoutSeconds: 1
-          periodSeconds: 10
-          failureThreshold: 3
+        # readinessProbe: # Checks that the container is started
+        #   httpGet:
+        #     path: /api/v1/messaging/readyq/
+        #     scheme: HTTP
+        #     port: 443
+        #   initialDelaySeconds: 5
+        #   timeoutSeconds: 1
+        #   periodSeconds: 10
+        #   failureThreshold: 3
+        # livenessProbe: # Checks that the container is running
+        #   httpGet:
+        #     path: /api/v1/messaging/liveq/
+        #     scheme: HTTP
+        #     port: 443
+        #   initialDelaySeconds: 5
+        #   timeoutSeconds: 1
+        #   periodSeconds: 10
+        #   failureThreshold: 3
+        env:
+        - name: FCM_SERVER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fcm-creds
+              key: server-key
         volumeMounts:
           - name: app-tls
             mountPath: /app/secrets/keys/
-            readOnly: true
-          - name: messaging-tls
-            mountPath: /app/secrets/keys/messaging
             readOnly: true
           - name: app-config
             mountPath: /app/configs/
@@ -55,13 +58,10 @@ spec:
       volumes:
       - name: app-tls
         secret:
-          secretName: tracing-tls-v1
-      - name: messaging-tls
-        secret:
-          secretName: messaging-tls-v1
+          secretName: pandemic-api-tls-v1
       - name: app-config
         configMap:
-          name: tracing-v2
+          name: messaging-v1
       - name: mysql-creds
         secret:
           secretName: mysql-creds
@@ -70,13 +70,13 @@ spec:
 apiVersion: "autoscaling/v2beta1"
 kind: "HorizontalPodAutoscaler"
 metadata:
-  name: "pandemic-api-tracing-hpa"
+  name: "pandemic-api-messaging-hpa"
   labels:
-    app: "pandemic-api-tracing"
+    app: "pandemic-api-messaging"
 spec:
   scaleTargetRef:
     kind: "Deployment"
-    name: "pandemic-api-tracing"
+    name: "pandemic-api-messaging"
     apiVersion: "apps/v1"
   minReplicas: 1
   maxReplicas: 5
@@ -90,13 +90,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tracing
+  name: messaging
   labels:
-    app: pandemic-api-tracing
+    app: pandemic-api-messaging
 spec:
   clusterIP: None
   selector:
-    app: pandemic-api-tracing
+    app: pandemic-api-messaging
   ports:
   - port: 443
     name: https

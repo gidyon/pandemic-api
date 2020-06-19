@@ -36,7 +36,7 @@ spec:
           name: pusher-v1
       - name: mysql-creds
         secret:
-          secretName: mysql-credentials
+          secretName: mysql-creds
 
 ---
 apiVersion: "autoscaling/v2beta1"

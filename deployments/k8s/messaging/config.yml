@@ -7,14 +7,15 @@ logging:
 security:
   tlsCert: /app/secrets/keys/cert
   tlsKey: /app/secrets/keys/key
-  serverName: messaging
+  serverName: pandemic-api-tls-v1
+  insecure: true
 databases:
   sqlDatabase:
     required: true
     address: mysqldb:80
     host: mysqldb
     port: 80
-    userFile: /app/secrets/mysql/username
+    userFile: /app/secrets/mysql/user
     passwordFile: /app/secrets/mysql/password
     schemaFile: /app/secrets/mysql/schema
     metadata:

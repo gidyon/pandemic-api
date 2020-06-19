@@ -360,6 +360,39 @@ func local_request_LocationTracingAPI_ListUsers_0(ctx context.Context, marshaler
 
 }
 
+var (
+	filter_LocationTracingAPI_SearchUsers_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+)
+
+func request_LocationTracingAPI_SearchUsers_0(ctx context.Context, marshaler runtime.Marshaler, client LocationTracingAPIClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq SearchUsersRequest
+	var metadata runtime.ServerMetadata
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_LocationTracingAPI_SearchUsers_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.SearchUsers(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_LocationTracingAPI_SearchUsers_0(ctx context.Context, marshaler runtime.Marshaler, server LocationTracingAPIServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq SearchUsersRequest
+	var metadata runtime.ServerMetadata
+
+	if err := runtime.PopulateQueryParameters(&protoReq, req.URL.Query(), filter_LocationTracingAPI_SearchUsers_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.SearchUsers(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
 // RegisterLocationTracingAPIHandlerServer registers the http handlers for service LocationTracingAPI to "mux".
 // UnaryRPC     :call LocationTracingAPIServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -502,6 +535,26 @@ func RegisterLocationTracingAPIHandlerServer(ctx context.Context, mux *runtime.S
 		}
 
 		forward_LocationTracingAPI_ListUsers_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("GET", pattern_LocationTracingAPI_SearchUsers_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_LocationTracingAPI_SearchUsers_0(rctx, inboundMarshaler, server, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_LocationTracingAPI_SearchUsers_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
 	})
 
@@ -686,6 +739,26 @@ func RegisterLocationTracingAPIHandlerClient(ctx context.Context, mux *runtime.S
 
 	})
 
+	mux.Handle("GET", pattern_LocationTracingAPI_SearchUsers_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_LocationTracingAPI_SearchUsers_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_LocationTracingAPI_SearchUsers_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
 	return nil
 }
 
@@ -703,6 +776,8 @@ var (
 	pattern_LocationTracingAPI_GetUser_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"api", "v1", "users", "phone_number"}, "", runtime.AssumeColonVerbOpt(true)))
 
 	pattern_LocationTracingAPI_ListUsers_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"api", "v1", "users", "action", "list"}, "", runtime.AssumeColonVerbOpt(true)))
+
+	pattern_LocationTracingAPI_SearchUsers_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"api", "v1", "users", "action", "search"}, "", runtime.AssumeColonVerbOpt(true)))
 )
 
 var (
@@ -719,4 +794,6 @@ var (
 	forward_LocationTracingAPI_GetUser_0 = runtime.ForwardResponseMessage
 
 	forward_LocationTracingAPI_ListUsers_0 = runtime.ForwardResponseMessage
+
+	forward_LocationTracingAPI_SearchUsers_0 = runtime.ForwardResponseMessage
 )

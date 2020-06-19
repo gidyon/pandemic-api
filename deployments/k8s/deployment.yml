@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: pandemic-api-gateway
-        image: gidyon/pandemic-api:v0.5
+        image: gidyon/pandemic-api:latest
         args: ["--cors", "--services-file", "/app/configs/gateway.yml", "--port", "443"]
         imagePullPolicy: Always
         ports:

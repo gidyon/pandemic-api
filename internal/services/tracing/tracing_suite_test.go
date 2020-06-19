@@ -26,6 +26,7 @@ func TestTracing(t *testing.T) {
 var (
 	TracingServer *tracingAPIServer
 	TracingAPI    contact_tracing.ContactTracingServer
+	AlertStream   *mocks.AlertContactsStream
 )
 
 // 192.168.100.10
@@ -53,16 +54,16 @@ var _ = BeforeSuite(func() {
 	})
 
 	// Mock for alert contacts stream
-	alertStream := &mocks.AlertContactsStream{}
-	alertStream.On("Send", mock.Anything, mock.Anything).
+	AlertStream = &mocks.AlertContactsStream{}
+	AlertStream.On("Send", mock.Anything, mock.Anything).
 		Return(nil)
-	alertStream.On("CloseAndRecv").Return(&empty.Empty{}, nil)
-	alertStream.On("CloseSend").Return(&empty.Empty{}, nil)
+	AlertStream.On("CloseAndRecv").Return(&empty.Empty{}, nil)
+	AlertStream.On("CloseSend").Return(&empty.Empty{}, nil)
 
 	// Create mock for messaging server
 	messagingClient := &mocks.MessagingClientMock{}
 	messagingClient.On("AlertContacts", mock.Anything, mock.Anything).
-		Return(alertStream, nil)
+		Return(AlertStream, nil)
 	messagingClient.On("BroadCastMessage", mock.Anything, mock.Anything).
 		Return(&messaging.BroadCastMessageResponse{}, nil)
 	messagingClient.On("SendMessage", mock.Anything, mock.Anything).
